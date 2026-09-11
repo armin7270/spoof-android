@@ -3,10 +3,20 @@ package com.armin7270.snispoof.state
 import android.content.Context
 import com.armin7270.snispoof.core.proxy.ProxyConfig
 import com.armin7270.snispoof.core.proxy.ProxyConfigParser
+import com.armin7270.snispoof.core.proxy.ProxyProtocol
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/** Persists imported proxy configs (vless/trojan/vmess) and the active one. */
+/** Outcome of a share-link import: what landed, and what had to be refused. */
+data class ImportResult(val imported: Int, val unsupported: Int)
+
+/**
+ * Persists imported proxy configs (vless/trojan) and the active one.
+ *
+ * `vmess://` links are still parsed, but refused here with an explicit count —
+ * previously they were imported silently and then failed at connect time with
+ * "vmess: not supported in this build", which looks like a broken network.
+ */
 class ConfigStore(context: Context) {
 
     private val prefs = context.applicationContext.getSharedPreferences("configs", Context.MODE_PRIVATE)
@@ -19,14 +29,17 @@ class ConfigStore(context: Context) {
 
     fun active(): ProxyConfig? = _configs.value.firstOrNull { it.id == _selectedId.value }
 
-    fun import(text: String): Int {
+    fun import(text: String): ImportResult {
         val parsed = ProxyConfigParser.parseAll(text)
-        if (parsed.isEmpty()) return 0
-        val merged = (_configs.value + parsed).distinctBy { it.id }
-        _configs.value = merged
-        prefs.edit().putString(KEY_CONFIGS, ProxyConfig.encode(merged)).apply()
-        if (_selectedId.value == null) select(parsed.first().id)
-        return parsed.size
+        val usable = parsed.filter { it.proto != ProxyProtocol.VMESS }
+        val refused = parsed.size - usable.size
+        if (usable.isNotEmpty()) {
+            val merged = (_configs.value + usable).distinctBy { it.id }
+            _configs.value = merged
+            prefs.edit().putString(KEY_CONFIGS, ProxyConfig.encode(merged)).apply()
+            if (_selectedId.value == null) select(usable.first().id)
+        }
+        return ImportResult(usable.size, refused)
     }
 
     fun select(id: String?) {

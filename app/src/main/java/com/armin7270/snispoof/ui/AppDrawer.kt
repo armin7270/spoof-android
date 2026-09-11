@@ -53,15 +53,11 @@ enum class DrawerDestination(val icon: ImageVector) {
 }
 
 @Composable
-internal fun DrawerLanguageLabel(): String = if (LocalHomePersian.current) "فارسی" else "English"
-
-@Composable
 internal fun AppDrawerContent(
     selected: DrawerDestination,
     onDestination: (DrawerDestination) -> Unit,
     persian: Boolean,
     onToggleLanguage: (Boolean) -> Unit,
-    onClose: () -> Unit,
 ) {
     val localizedFont = VazirmatnUiFd
     Column(

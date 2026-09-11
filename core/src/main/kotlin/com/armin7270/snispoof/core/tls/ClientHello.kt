@@ -82,7 +82,6 @@ object ClientHelloForge {
     // ---- byte builders -----------------------------------------------------
     private fun ub(v: Int): ByteArray = byteArrayOf(v.toByte())
     private fun s16(v: Int): ByteArray = byteArrayOf(((v ushr 8) and 0xff).toByte(), (v and 0xff).toByte())
-    private fun s16Len(v: Int): Int = 2
     private fun len24(v: Int): ByteArray =
         byteArrayOf(((v ushr 16) and 0xff).toByte(), ((v ushr 8) and 0xff).toByte(), (v and 0xff).toByte())
     private fun ext(type: Int, data: ByteArray): ByteArray = s16(type) + s16(data.size) + data
@@ -97,27 +96,77 @@ class SniLocation(val offset: Int, val length: Int, val host: String)
  */
 object ClientHelloParser {
 
-    fun looksLikeTls(data: ByteArray, off: Int = 0, len: Int = data.size): Boolean =
-        len >= 6 && data[off] == 0x16.toByte() &&
-                (data[off + 1].toInt() and 0xff) in 0x03..0x04
+    fun looksLikeTls(data: ByteArray, off: Int = 0, len: Int = data.size): Boolean {
+        if (len < 6 || off < 0 || off + 6 > data.size) return false
+        if (data[off] != 0x16.toByte()) return false
+        // record version: major must be 0x03, minor 0x00..0x04 (SSL3..TLS1.3).
+        // Checking the *major* byte against 0x03..0x04 accepted 0x04 as a major
+        // version, which never exists on the wire.
+        val major = data[off + 1].toInt() and 0xff
+        val minor = data[off + 2].toInt() and 0xff
+        return major == 0x03 && minor in 0x00..0x04
+    }
 
     /** @return SNI location or null if this is not a ClientHello with an SNI. */
     fun findSni(data: ByteArray, off: Int = 0, len: Int = data.size): SniLocation? {
         if (!looksLikeTls(data, off, len)) return null
-        if (data[off + 5] != 0x01.toByte()) return null // not a handshake/ClientHello
-        var p = off + 5 + 4 // handshake header
+        if (!isClientHello(data, off, len)) return null
+        return sniFromExtensions(data, off, len)?.second
+    }
+
+    /**
+     * Full picture of an outgoing ClientHello: where the visible SNI is, and
+     * whether the real server name is hidden behind Encrypted ClientHello / ESNI.
+     */
+    fun inspect(data: ByteArray, off: Int = 0, len: Int = data.size): ClientHelloInspect {
+        if (!looksLikeTls(data, off, len) || len < 6 || !isClientHello(data, off, len)) {
+            return ClientHelloInspect(null, false)
+        }
+        val sni = sniFromExtensions(data, off, len)?.second
+        var hidden: HiddenSni? = null
+        var p = headerEnd(data, off, len)
+        if (p < 0) return ClientHelloInspect(sni, false)
+        val extEnd = minOf(off + len, p + u16(data, p))
+        p += 2
+        while (p + 4 <= extEnd) {
+            val type = u16(data, p)
+            val eLen = u16(data, p + 2)
+            val eStart = p + 4
+            if (eStart + eLen > extEnd) break // truncated: stop, don't guess
+            if (hidden == null) hidden = HiddenSni.fromCode(type)
+            p = eStart + eLen
+        }
+        return ClientHelloInspect(sni, hidden != null)
+    }
+
+    // ---- shared parsing helpers --------------------------------------------
+
+    /** True when the handshake message at [off] is a ClientHello (type 0x01). */
+    private fun isClientHello(data: ByteArray, off: Int, len: Int): Boolean =
+        off + 6 <= off + len && data[off + 5] == 0x01.toByte()
+
+    /** Offset of the extension-list length field, or -1 if the header is malformed. */
+    private fun headerEnd(data: ByteArray, off: Int, len: Int): Int {
+        var p = off + 5 + 4 // record header + handshake header
         p += 2              // client version
         p += 32             // random
-        if (p >= off + len) return null
+        if (p >= off + len) return -1
         val sidLen = data[p].toInt() and 0xff
         p += 1 + sidLen
-        if (p + 2 > off + len) return null
+        if (p + 2 > off + len) return -1
         val cipherLen = u16(data, p); p += 2 + cipherLen
-        if (p >= off + len) return null
+        if (p >= off + len) return -1
         val compLen = data[p].toInt() and 0xff; p += 1 + compLen
-        if (p + 2 > off + len) return null
-        val extTotal = u16(data, p); p += 2
-        val extEnd = minOf(off + len, p + extTotal)
+        if (p + 2 > off + len) return -1
+        return p
+    }
+
+    /** Walks the extension block looking for server_name. */
+    private fun sniFromExtensions(data: ByteArray, off: Int, len: Int): Pair<Int, SniLocation>? {
+        val p0 = headerEnd(data, off, len)
+        if (p0 < 0) return null
+        var p = p0 + 2 // skip extTotal
+        val extEnd = minOf(off + len, p0 + u16(data, p0))
         while (p + 4 <= extEnd) {
             val type = u16(data, p)
             val eLen = u16(data, p + 2)
@@ -133,7 +182,7 @@ object ClientHelloParser {
                     if (nameType == 0 && nameLen in 1..(listEnd - q - 3)) {
                         val host = String(data, q + 3, nameLen, Charsets.US_ASCII)
                         val absOff = q + 3
-                        return SniLocation(absOff, nameLen, host)
+                        return Pair(absOff, SniLocation(absOff, nameLen, host))
                     }
                     q += 3 + nameLen
                 }
@@ -146,4 +195,34 @@ object ClientHelloParser {
 
     private fun u16(b: ByteArray, i: Int): Int =
         ((b[i].toInt() and 0xff) shl 8) or (b[i + 1].toInt() and 0xff)
+}
+
+/**
+ * Result of inspecting an outgoing ClientHello for what the desync layer can do
+ * with it — including the case where the SNI is deliberately not on the wire.
+ */
+data class ClientHelloInspect(
+    val sni: SniLocation?,
+    /** Encrypted ClientHello / ESNI present: the visible SNI is decoy, not real. */
+    val sniEncrypted: Boolean,
+) {
+    /**
+     * `sni_replace` rewrites bytes that do not exist when the SNI is encrypted,
+     * so asking for it is a no-op at best. Fragmentation is still meaningful and
+     * stays available.
+     */
+    val sniReplaceable: Boolean get() = sni != null && !sniEncrypted
+}
+
+/** ClientHello extension types that hide the server name from the wire. */
+enum class HiddenSni(val code: Int, val label: String) {
+    /** RFC 9180-based Encrypted ClientHello (drafts I-D.ietf-tls-ech). */
+    ECH(0xfe0d, "ECH"),
+
+    /** The older draft ESNI extension, still seen on some deployments. */
+    ESNI(0xffce, "ESNI");
+
+    companion object {
+        fun fromCode(code: Int): HiddenSni? = entries.firstOrNull { it.code == code }
+    }
 }

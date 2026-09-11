@@ -65,7 +65,7 @@ class TcpStackIntegrationTest {
     fun `guest handshake - send - echo through real socket - receive`() = runBlocking {
         val echo = ServerSocket(0)
         val echoPort = echo.localPort
-        val echoThread = Thread {
+        Thread {
             while (!echo.isClosed) {
                 val c = runCatching { echo.accept() }.getOrNull() ?: return@Thread
                 Thread {
@@ -82,7 +82,6 @@ class TcpStackIntegrationTest {
             }
         }.apply { isDaemon = true }.start()
 
-        val receivedByApp = LinkedBlockingQueue<ByteArray>()
         stack = TcpStack(
             sink = { pkt -> fromStack.put(pkt) },
             mtu = 1280,
@@ -94,7 +93,7 @@ class TcpStackIntegrationTest {
                         socket.connect(java.net.InetSocketAddress("127.0.0.1", echoPort), 4000)
                         val out = socket.getOutputStream()
                         val input = socket.getInputStream()
-                        val pumpOut = Thread {
+                        Thread {
                             try {
                                 while (true) {
                                     val data = runBlocking { flow.read() } ?: break
@@ -146,7 +145,7 @@ class TcpStackIntegrationTest {
         sendFromGuest(Flags.ACK, ack = (dataPkt.tcpSeq + echoedLen))
 
         // ---- more data both ways (multi-chunk) ----
-        val big = ByteArray(5000) { 'A'.plus(it % 26).toByte() }
+        val big = ByteArray(5000) { ('A'.code + it % 26).toByte() }
         sendFromGuest(Flags.ACK or Flags.PSH, big, ack = (dataPkt.tcpSeq + echoedLen))
         guestSeq += big.size
 

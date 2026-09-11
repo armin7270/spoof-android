@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.armin7270.snispoof.state.ConnectionState
@@ -457,7 +458,6 @@ internal fun SelectedProfileRow(
     val isPersian = LocalHomePersian.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val slideDistancePx = 4.dp.value
     val chevronOffset by animateFloatAsState(
         targetValue = if (pressed) 2f else 0f,
         animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing),
@@ -500,7 +500,7 @@ internal fun SelectedProfileRow(
             tint = SpoofColors.DisconnectedBlue,
             modifier = Modifier
                 .size(17.dp)
-                .offset(x = chevronOffset.dp),
+                .offset { IntOffset(x = chevronOffset.dp.roundToPx(), y = 0) },
         )
     }
 }

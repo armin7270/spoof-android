@@ -189,15 +189,20 @@ class DohResolver(
         fun buildQuery(host: String, type: Int, id: Int = 0x1234): ByteArray {
             val out = ByteArrayOutputStream()
             fun u16(v: Int) { out.write((v ushr 8) and 0xff); out.write(v and 0xff) }
-            u16(id); u16(0x0100); u16(1); u16(0); u16(0); u16(0)
+            // QDCOUNT=1, ANCOUNT=0, NSCOUNT=0, ARCOUNT=1 (the EDNS(0) OPT below)
+            u16(id); u16(0x0100); u16(1); u16(0); u16(0); u16(1)
             for (label in host.trim('.').split('.')) {
                 out.write(label.length)
                 out.write(label.toByteArray(Charsets.US_ASCII))
             }
             out.write(0)
             u16(type); u16(1)
-            // EDNS(0) with 1232 buffer
-            out.write(0); u16(41); u16(1232); u16(0); u16(0)
+            // EDNS(0) OPT RR: root name(1) + type(2)=41 + class(2)=UDP payload
+            // size + TTL(4) extended-rcode/flags + RDLENGTH(2). The TTL field is
+            // 4 bytes wide on the wire, not 2.
+            out.write(0); u16(41); u16(1232)
+            u16(0); u16(0)   // TTL = 0 (4 bytes)
+            u16(0)           // RDLENGTH = 0
             return out.toByteArray()
         }
 
@@ -302,8 +307,18 @@ class DnsServer(
     private val sink: PacketSink,
     private val log: (String) -> Unit,
 ) {
-    /** learned ip -> hostname (bounded) */
-    val hostnameMap = ConcurrentHashMap<Int, String>()
+    /**
+     * Learned ip -> hostnames (bounded).
+     *
+     * A set per address, not a single name: one CDN edge IP answers for every
+     * zone it fronts, and the name the phone happened to query last is not
+     * necessarily the one an app is connecting to — remembering only that name
+     * made hostname-scoped profiles misroute unrelated apps.
+     */
+    private val hostnameMap = ConcurrentHashMap<Int, MutableSet<String>>()
+
+    /** Every hostname seen resolving to [ip]; may legitimately be several. */
+    fun hostnamesFor(ip: Int): Set<String> = hostnameMap[ip] ?: emptySet()
 
     private data class Entry(val response: ByteArray, val expiresAt: Long)
     private val cache = ConcurrentHashMap<String, Entry>()
@@ -316,11 +331,15 @@ class DnsServer(
         val srcIp = p.srcIp
         val srcPort = p.srcPort
 
+        // Parse the question up front: a malformed packet must not reach the
+        // resolver, and a failed lookup must not silently answer with nothing.
+        val qNameEnd = DohResolver.skipName(wire, 12)
+        if (qNameEnd + 4 > wire.size) return
+        val name = DohResolver.readName(wire, 12) ?: ""
+        val qtype = ((wire[qNameEnd].toInt() and 0xff) shl 8) or (wire[qNameEnd + 1].toInt() and 0xff)
+
         scope.launch {
             try {
-                val qNameEnd = DohResolver.skipName(wire, 12)
-                val name = DohResolver.readName(wire, 12) ?: ""
-                val qtype = ((wire[qNameEnd].toInt() and 0xff) shl 8) or (wire[qNameEnd + 1].toInt() and 0xff)
                 val key = "$name/$qtype"
                 val cached = cache[key]
                 val response: ByteArray = when {
@@ -358,7 +377,7 @@ class DnsServer(
         val ips = DohResolver.parseARecords(resp)
         for (ip in ips) {
             if (hostnameMap.size > 4096) hostnameMap.clear()
-            hostnameMap[ip] = fallbackName
+            hostnameMap.getOrPut(ip) { ConcurrentHashMap.newKeySet() }.add(fallbackName)
         }
     }
 

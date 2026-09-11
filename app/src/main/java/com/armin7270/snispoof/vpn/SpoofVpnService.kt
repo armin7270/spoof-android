@@ -39,7 +39,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.net.DatagramSocket
@@ -53,6 +52,7 @@ class SpoofVpnService : VpnService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
+    private val starting = AtomicBoolean(false)
     private var tunPfd: ParcelFileDescriptor? = null
     private var engine: PacketEngine? = null
     private var protector: ServiceProtector? = null
@@ -85,7 +85,21 @@ class SpoofVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_DISCONNECT -> disconnect()
-            ACTION_CONNECT, null -> connect()
+            ACTION_CONNECT, null -> {
+                // Promote to foreground on the calling (main) thread first: reading
+                // settings, establishing the TUN and probing the root helper can take
+                // seconds, and none of it may block the main thread.
+                notifyState(getString(R.string.notif_connecting))
+                if (!running.get() && starting.compareAndSet(false, true)) {
+                    scope.launch {
+                        try {
+                            connect()
+                        } finally {
+                            starting.set(false)
+                        }
+                    }
+                }
+            }
         }
         return START_NOT_STICKY
     }
@@ -108,13 +122,13 @@ class SpoofVpnService : VpnService() {
 
     // ------------------------------------------------------------------ connect
 
-    private fun connect() {
+    private suspend fun connect() {
         if (running.get()) return
         VpnStateStore.markConnecting()
         VpnStateStore.log(getString(R.string.log_connecting))
         notifyState(getString(R.string.notif_connecting))
 
-        val settings = runBlocking { prefs.current() }
+        val settings = prefs.current()
         val profile = ProfileStore.get(this).selected()
         if (profile == null) {
             fail(getString(R.string.err_no_profile))
@@ -169,7 +183,7 @@ class SpoofVpnService : VpnService() {
 
     // ------------------------------------------------------------------ engine
 
-    private fun startEngine(profile: SpoofProfile, settings: AppSettings) {
+    private suspend fun startEngine(profile: SpoofProfile, settings: AppSettings) {
         protector = ServiceProtector()
         val resolver = DohResolver(DohProvider.CLOUDFLARE, protector!!, ::appLog)
         engine = PacketEngine(
@@ -188,10 +202,20 @@ class SpoofVpnService : VpnService() {
         )
 
         if (settings.rootMode && profile.desyncMethod == DesyncMethod.WRONG_SEQ.id) {
-            rootInjector = RootInjector(helperPath(), ::appLog)
-            if (!rootInjector!!.start()) {
-                VpnStateStore.log(getString(R.string.log_root_unavailable))
-                rootInjector = null
+            val helper = helperPath()
+            if (helper == null) {
+                // wrong_seq is the one technique Android cannot emulate without
+                // raw injection, so say so instead of silently degrading.
+                VpnStateStore.log(
+                    "root helper not found (expected libspoofhelper.so in jniLibs or " +
+                            "/data/local/tmp/spoofhelper) — using split desync"
+                )
+            } else {
+                rootInjector = RootInjector(helper, ::appLog)
+                if (!rootInjector!!.start()) {
+                    VpnStateStore.log(getString(R.string.log_root_unavailable))
+                    rootInjector = null
+                }
             }
         }
     }
@@ -276,7 +300,7 @@ class SpoofVpnService : VpnService() {
                 withTimeoutOrNull(8000) { socket.connect(dst, 8000) }
                     ?: throw java.io.IOException("connect timeout $dstLabel")
 
-                val first = withTimeoutOrNull(15000) { flow.read() }
+                val first = readFirstPayload(flow)
                 if (first == null) {
                     // server-speaks-first protocol or dead flow — plain pump
                     pump(flow, socket)
@@ -330,7 +354,6 @@ class SpoofVpnService : VpnService() {
                 protector = protector,
                 desync = desyncParams,
                 onFragment = { counters.fragmentsInjected.addAndGet(it.toLong()) },
-                log = ::appLog,
             )
             tunnel = opened
             VpnStateStore.log("tunnel ${config.name} → $dstLabel")
@@ -400,6 +423,37 @@ class SpoofVpnService : VpnService() {
             runCatching { s.close() }
         }
     }.getOrNull()
+
+    /**
+     * Returns the first payload of the flow, reassembled far enough to hold one
+     * complete TLS record.
+     *
+     * A single TCP segment is *not* a whole ClientHello: with a small MTU, or a
+     * large (GREASE/ECH) ClientHello, the browser's handshake arrives spread over
+     * several segments. Desyncing only the first fragment silently degrades to a
+     * plain write — the split lands inside the record header, `parseSni` fails and
+     * the DPI sees an unmodified ClientHello. So accumulate up to the record
+     * length advertised in the first 5 bytes.
+     */
+    private suspend fun readFirstPayload(flow: TcpFlow, timeoutMs: Long = 15_000): ByteArray? =
+        withTimeoutOrNull(timeoutMs) {
+            val head = flow.read() ?: return@withTimeoutOrNull null
+            if (!TlsParser.looksLikeTls(head)) return@withTimeoutOrNull head
+            val recordLen = ((head[3].toInt() and 0xff) shl 8) or (head[4].toInt() and 0xff)
+            val total = 5 + recordLen
+            // a ClientHello record never legitimately exceeds 2^14 + 2^11
+            if (recordLen <= 0 || total > 18432) return@withTimeoutOrNull head
+            if (head.size >= total) return@withTimeoutOrNull head
+            val buf = head.copyOf(total)
+            var have = head.size
+            while (have < total) {
+                val more = flow.read() ?: break
+                val n = minOf(more.size, total - have)
+                System.arraycopy(more, 0, buf, have, n)
+                have += n
+            }
+            if (have == total) buf else buf.copyOf(have)
+        }
 
     private suspend fun pump(flow: TcpFlow, socket: Socket, first: ByteArray? = null) {
         pump(flow, socket.getOutputStream(), socket.getInputStream(), socket, first)
@@ -471,12 +525,27 @@ class SpoofVpnService : VpnService() {
         runCatching { tunPfd?.close() }; tunPfd = null
     }
 
-    private fun helperPath(): String =
-        File(applicationInfo.nativeLibraryDir, "libspoofhelper.so").absolutePath
+    /**
+     * Locates the optional root helper.
+     *
+     * The packaged `libspoofhelper.so` is the intended location once the native
+     * source under app/src/main/cpp is wired into the build, but the README has
+     * always documented `adb push spoofhelper /data/local/tmp/`, and nothing is
+     * ever compiled into jniLibs today. Checking both means the documented
+     * install actually works instead of always reporting "root unavailable".
+     */
+    private fun helperPath(): String? = listOf(
+        File(applicationInfo.nativeLibraryDir, "libspoofhelper.so"),
+        File("/data/local/tmp/spoofhelper"),
+    ).firstOrNull { it.canExecute() || (it.isFile && it.canRead()) }?.absolutePath
 
     // ------------------------------------------------------------------ notif
 
     private fun createNotificationChannel() {
+        // NotificationChannel and NotificationManager.createNotificationChannel
+        // only exist from API 26, while minSdk is 24 — calling this unguarded
+        // crashed the service with NoClassDefFoundError on Android 7.x.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(NotificationManager::class.java)
         val ch = NotificationChannel(
             CHANNEL_ID,

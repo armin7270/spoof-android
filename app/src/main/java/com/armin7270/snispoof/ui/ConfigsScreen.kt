@@ -48,7 +48,7 @@ internal fun ConfigsScreen(vm: VpnViewModel, onMenuClick: () -> Unit) {
     var notice by remember { mutableStateOf<String?>(null) }
     val lblPaste = t("Paste config link(s) below", "لینک کانفیگ را اینجا بچسبانید")
     val lblImport = t("Import from clipboard or text", "ورود از کلیپ‌بورد یا متن")
-    val hint = "vless://…  trojan://…  vmess://…"
+    val hint = "vless://…  trojan://…"
     val okEmpty = t("No configs yet — the tunnel runs direct with DPI desync.",
         "هنوز کانفیگی نیست — تونل مستقیم با desync اجرا می‌شود.")
     val lblDirect = t("Use direct mode (no tunnel)", "حالت مستقیم (بدون تونل)")
@@ -59,7 +59,7 @@ internal fun ConfigsScreen(vm: VpnViewModel, onMenuClick: () -> Unit) {
         header = {
             ToolPageHeader(
                 title = t("Configs", "کانفیگ‌ها"),
-                subtitle = t("VLESS · Trojan · VMess tunnel", "تونل VLESS · Trojan · VMess"),
+                subtitle = t("VLESS · Trojan tunnel", "تونل VLESS · Trojan"),
                 icon = Icons.Rounded.SwapHoriz,
                 accent = accent,
                 onMenuClick = onMenuClick,
@@ -77,9 +77,25 @@ internal fun ConfigsScreen(vm: VpnViewModel, onMenuClick: () -> Unit) {
                     onCommit = { text ->
                         val payload = if (text.isBlank())
                             clipboard.getText()?.text.orEmpty() else text
-                        val n = vm.importConfigs(payload)
-                        notice = if (n > 0) tNoCompose("Imported $n config(s)", "$n کانفیگ وارد شد", L10nRuntime.language == "fa")
-                        else tNoCompose("No valid config found", "کانفیگ معتبری پیدا نشد", L10nRuntime.language == "fa")
+                        val res = vm.importConfigs(payload)
+                        val fa = L10nRuntime.language == "fa"
+                        notice = when {
+                            res.imported > 0 && res.unsupported == 0 ->
+                                tNoCompose("Imported ${res.imported} config(s)", "${res.imported} کانفیگ وارد شد", fa)
+                            res.imported > 0 ->
+                                tNoCompose(
+                                    "Imported ${res.imported}; skipped ${res.unsupported} vmess link(s) — VMess is not supported yet",
+                                    "${res.imported} کانفیگ وارد شد؛ ${res.unsupported} لینک vmess نادیده گرفته شد — VMess هنوز پشتیبانی نمی‌شود",
+                                    fa,
+                                )
+                            res.unsupported > 0 ->
+                                tNoCompose(
+                                    "${res.unsupported} vmess link(s) found — VMess is not supported yet, use VLESS or Trojan",
+                                    "${res.unsupported} لینک vmess پیدا شد — VMess هنوز پشتیبانی نمی‌شود؛ از VLESS یا Trojan استفاده کنید",
+                                    fa,
+                                )
+                            else -> tNoCompose("No valid config found", "کانفیگ معتبری پیدا نشد", fa)
+                        }
                     },
                     hint = hint,
                 )

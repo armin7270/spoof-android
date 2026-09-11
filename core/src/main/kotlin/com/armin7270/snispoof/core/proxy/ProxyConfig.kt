@@ -4,7 +4,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.security.MessageDigest
-import java.util.Base64
 
 enum class ProxyProtocol(val id: String) {
     VLESS("vless"), TROJAN("trojan"), VMESS("vmess");
@@ -64,7 +63,7 @@ object ProxyConfigParser {
         }
         // raw base64 bundles (subscription exports)
         runCatching {
-            val decoded = String(Base64.getMimeDecoder().decode(text.trim()), Charsets.UTF_8)
+            val decoded = String(com.armin7270.snispoof.core.util.Base64.decode(text), Charsets.UTF_8)
             for (m in uriRegex.findAll(decoded)) {
                 runCatching { parseOne(m.value) }.getOrNull()?.let { out.add(it) }
             }
@@ -123,7 +122,7 @@ object ProxyConfigParser {
 
     private fun parseVmess(uri: String): ProxyConfig? {
         val b64 = uri.removePrefix("vmess://")
-        val decoded = String(Base64.getMimeDecoder().decode(b64), Charsets.UTF_8)
+        val decoded = String(com.armin7270.snispoof.core.util.Base64.decode(b64), Charsets.UTF_8)
         val obj = ProxyConfig.json.parseToJsonElement(decoded) as? kotlinx.serialization.json.JsonObject
             ?: return null
         fun str(key: String): String =

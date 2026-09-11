@@ -177,7 +177,7 @@ class ProfileRouter(private var profiles: List<SpoofProfile>, private val allowA
         val profile: SpoofProfile?,
     )
 
-    fun pick(dstIp: Int, dstPort: Int, hostname: String?): Decision {
+    fun pick(dstIp: Int, dstPort: Int, hostnames: Set<String>): Decision {
         val active = synchronized(this) { profiles }
         for (p in active) {
             if (!p.enabled) continue
@@ -190,8 +190,9 @@ class ProfileRouter(private var profiles: List<SpoofProfile>, private val allowA
                         Ip4.inCidr(dstIp, Ip4.parse(base), prefix.toInt())
                     }.getOrDefault(false)
                 }
-                MatchScope.HOSTNAME -> dstPort == 443 && hostname != null &&
-                        p.hostSuffixes.any { hostname == it || hostname.endsWith(".$it") }
+                MatchScope.HOSTNAME -> dstPort == 443 && hostnames.any { h ->
+                    p.hostSuffixes.any { suffix -> h == suffix || h.endsWith(".$suffix") }
+                }
             }
             if (!matched) continue
             val targetIp = if (p.substitute) runCatching { Ip4.parse(p.connectIp) }.getOrDefault(dstIp) else dstIp

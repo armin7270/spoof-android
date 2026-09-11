@@ -1,7 +1,26 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// Release signing resolution order:
+//   1. keystore.properties in the repo root (local machine, never committed)
+//   2. ANDROID_* environment variables (CI secrets)
+//   3. neither -> assembleRelease produces an unsigned APK, which is still
+//      enough to verify that R8 runs clean.
+// keystore.properties looks like:
+//   storeFile=keystore/snispoof-release.keystore
+//   storePassword=...
+//   keyAlias=snispoof
+//   keyPassword=...
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val hasKeystoreProps = keystoreProps.getProperty("storeFile") != null
+val hasCiSigning = System.getenv("ANDROID_STORE_FILE") != null
 
 android {
     namespace = "com.armin7270.snispoof"
@@ -15,13 +34,39 @@ android {
         versionName = "1.1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasKeystoreProps || hasCiSigning) {
+                // Resolve relative paths against the repo root, so both the
+                // properties file and CI secrets behave the same way.
+                storeFile = rootProject.file(
+                    keystoreProps.getProperty("storeFile")
+                        ?: System.getenv("ANDROID_STORE_FILE")
+                )
+                storePassword = keystoreProps.getProperty("storePassword")
+                    ?: System.getenv("ANDROID_STORE_PASSWORD")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                    ?: System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+                    ?: System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Shrink + obfuscate: without R8 the APK ships ~21 MB and every class
+            // name is readable, which makes the app trivially fingerprintable by
+            // its bytes as well as its traffic.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasKeystoreProps || hasCiSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -41,8 +86,9 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
-    // prebuilt root helper binaries live in app/src/main/jniLibs/<abi>/libspoofhelper.so
-    // rebuild them with tools/build-helper.cmd (see README)
+    // The root helper is NOT packaged: it is a standalone binary that a rooted
+    // device installs to /data/local/tmp. Build and install it with
+    // tools/build-helper.cmd (Windows) or tools/build-helper.sh (POSIX) — see README.
 }
 
 dependencies {

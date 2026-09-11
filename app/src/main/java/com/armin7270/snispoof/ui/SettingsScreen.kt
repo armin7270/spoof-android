@@ -54,7 +54,6 @@ internal fun SettingsScreen(vm: VpnViewModel, onMenuClick: () -> Unit, onOpenApp
     val profiles by vm.profiles.collectAsStateWithLifecycle()
     val selectedId by vm.selectedProfileId.collectAsStateWithLifecycle()
     val accent = SpoofColors.DisconnectedBlue
-    var editingProfile by remember { mutableStateOf<SpoofProfile?>(null) }
     val newProfileName = t("New profile", "پروفایل جدید")
 
     ToolPageScaffold(
@@ -248,11 +247,28 @@ internal fun SettingsScreen(vm: VpnViewModel, onMenuClick: () -> Unit, onOpenApp
                 NumberFieldRow(label = "MTU", value = settings.mtu, accent = accent, onCommit = { vm.setMtu(it) })
                 SwitchRow(
                     title = t("Root mode (wrong_seq injection)", "حالت روت (تزریق wrong_seq)"),
-                    subtitle = t("Faithful patterniha injection via su helper", "تزریق دقیق پترنی‌ها از طریق هلپر su"),
+                    subtitle = t(
+                        "Faithful patterniha injection via su helper",
+                        "تزریق دقیق پترنی‌ها از طریق هلپر su",
+                    ),
                     checked = settings.rootMode,
                     accent = accent,
                     onChange = { vm.setRootMode(it) },
                 )
+                if (settings.rootMode) {
+                    // wrong_seq needs raw packet injection, which Android only
+                    // grants to a manually installed root binary. Spell that out
+                    // here so "root unavailable" is not a surprise.
+                    Text(
+                        t(
+                            "Builds and installs the helper on a rooted device: tools/build-helper.sh (or .cmd on Windows), then enable Root mode. Without it wrong_seq silently falls back to split.",
+                            "برای wrong_seq باید هلپر روی دستگاه روت‌شده نصب شود: tools/build-helper.sh (یا .cmd در ویندوز) را اجرا کنید، سپس حالت روت را روشن کنید. بدون آن، wrong_seq بی‌صدا به split برمی‌گردد.",
+                        ),
+                        color = SpoofColors.TextSecondary,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 8.dp),
+                    )
+                }
                 SwitchRow(
                     title = t("Auto connect on boot", "اتصال خودکار بعد از روشن‌شدن"),
                     subtitle = "",

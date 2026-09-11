@@ -31,7 +31,6 @@ object ProxyTunnel {
         protector: com.armin7270.snispoof.core.engine.SocketProtector?,
         desync: DesyncParams?,
         onFragment: (Int) -> Unit,
-        log: (String) -> Unit,
     ): Tunnel {
         val socket = Socket()
         protector?.protectSocket(socket)
@@ -54,7 +53,7 @@ object ProxyTunnel {
                     input = socket.getInputStream(),
                     output = socket.getOutputStream(),
                     sni = config.tlsSni,
-                    alpn = "http/1.1",
+                    alpn = config.alpn.ifBlank { "http/1.1" },
                     fragmenter = { ch ->
                         val plan = TcpFragmenter.planForPayload(
                             desync?.method ?: DesyncMethod.SPLIT_SNI,
@@ -96,9 +95,8 @@ object ProxyTunnel {
             ProxyProtocol.VLESS -> {
                 val uuidBytes = uuidToBytes(config.uuid)
                     ?: throw java.io.IOException("vless: invalid uuid '${config.uuid}'")
-                val addl = byteArrayOf(0) // no additional info
-                val cmd = byteArrayOf(1)  // TCP
-                return byteArrayOf(0) + uuidBytes + addl + cmd + port + addr
+                // ver(0) + uuid(16) + addons(0) + cmd TCP(1) + port(2) + atyp(1) + addr
+                byteArrayOf(0) + uuidBytes + byteArrayOf(0) + byteArrayOf(1) + port + addr
             }
             ProxyProtocol.TROJAN -> {
                 if (config.password.isBlank()) throw java.io.IOException("trojan: empty password")
@@ -106,10 +104,10 @@ object ProxyTunnel {
                     .digest(config.password.toByteArray(Charsets.US_ASCII))
                     .joinToString("") { "%02x".format(it) }
                     .toByteArray(Charsets.US_ASCII)
-                val cmd = byteArrayOf(0x01) // CONNECT
                 val crlf = byteArrayOf(0x0D, 0x0A)
-                return hash + crlf + cmd + addr + port + crlf
+                hash + crlf + byteArrayOf(0x01) + addr + port + crlf // CONNECT
             }
+            // parsed and stored by the importer, but not implemented here
             ProxyProtocol.VMESS -> throw java.io.IOException("vmess: not supported in this build")
         }
     }

@@ -25,11 +25,24 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # Tests run first: a red suite should fail the build before it spends
+      # minutes packaging APKs.
+      - name: Run core unit tests
+        run: ./gradlew :core:test --no-daemon --stacktrace
+
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Run core unit tests
-        run: ./gradlew :core:test --no-daemon
+      # Release build exercises R8 (shrinking, obfuscation and the keep rules),
+      # which is where a missing keep rule would otherwise only show up in a
+      # published APK.
+      - name: Build release APK
+        env:
+          ANDROID_STORE_FILE: ${{ secrets.ANDROID_STORE_FILE }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -37,3 +50,19 @@ jobs:
           name: SNI-Spoofing-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SNI-Spoofing-release-apk
+          # signed when the signing secrets exist, unsigned otherwise
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-report
+          path: core/build/reports/tests/test
+          if-no-files-found: ignore

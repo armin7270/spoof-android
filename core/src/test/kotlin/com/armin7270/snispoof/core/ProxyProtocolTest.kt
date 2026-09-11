@@ -62,11 +62,20 @@ class ProxyProtocolTest {
 
     @Test
     fun `tls13 handshake against a live TLS13 endpoint when reachable`() {
-        // smoke test: skipped silently when the network is unavailable (CI/offline)
+        // Only an unreachable network may skip this test. It used to wrap the whole
+        // body in a catch-all `assumeTrue(false)`, which reported a *skip* instead
+        // of a *failure* when the handshake itself was broken — that is exactly how
+        // the ClientHello/record-layer bugs went unnoticed.
         val socket = java.net.Socket()
         try {
-            socket.soTimeout = 6000
             socket.connect(java.net.InetSocketAddress("cloudflare-dns.com", 443), 5000)
+        } catch (e: Exception) {
+            runCatching { socket.close() }
+            org.junit.Assume.assumeTrue("endpoint unreachable: ${e.message}", false)
+            return
+        }
+        try {
+            socket.soTimeout = 10_000
             val session = Tls13Client.handshake(
                 socket.getInputStream(), socket.getOutputStream(),
                 "cloudflare-dns.com",
@@ -85,9 +94,6 @@ class ProxyProtocolTest {
             val n = session.input.read(buf)
             assertTrue("no response bytes", n > 0)
             assertTrue(String(buf, 0, minOf(n, 32), Charsets.ISO_8859_1).contains("HTTP"))
-        } catch (e: Exception) {
-            println("tls13 smoke skipped: ${e.message}")
-            org.junit.Assume.assumeTrue("network unreachable: ${e.message}", false)
         } finally {
             runCatching { socket.close() }
         }

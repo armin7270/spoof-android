@@ -27,8 +27,8 @@ import com.armin7270.snispoof.ui.theme.SpoofColors
 @Composable
 internal fun AnimatedDottedWave(
     accent: Color,
-    motionEnabled: Boolean = true,
     modifier: Modifier = Modifier,
+    motionEnabled: Boolean = true,
 ) {
     Box(
         modifier = modifier
@@ -53,6 +53,7 @@ internal fun AnimatedDottedWave(
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.P)
 @Composable
 private fun PlatformAnimatedWave(
     accent: Color,

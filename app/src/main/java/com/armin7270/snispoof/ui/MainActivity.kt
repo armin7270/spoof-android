@@ -62,8 +62,6 @@ class MainActivity : ComponentActivity() {
         androidx.compose.runtime.CompositionLocalProvider(LocalWideShell provides false) {
             MainScreen(
                 vm = vm,
-                onOpenSettings = { },
-                onOpenApps = { },
                 onConnect = requestConnect,
             )
         }

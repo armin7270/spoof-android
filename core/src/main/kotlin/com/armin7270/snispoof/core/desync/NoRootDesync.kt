@@ -62,6 +62,15 @@ class NoRootDesync(
         dst: InetSocketAddress,
         firstPayload: ByteArray,
     ): Socket = withContext(Dispatchers.IO) {
+        val inspect = ClientHelloParser.inspect(firstPayload)
+        if (inspect.sniEncrypted) {
+            // The real server name is inside an Encrypted ClientHello; what sits
+            // in the visible SNI field is a decoy chosen by the client. Rewriting
+            // it cannot influence which host the censor thinks we visit, so say
+            // so instead of pretending sni_replace did something.
+            log("desync: SNI is encrypted (ECH/ESNI) — sni_replace has no target here")
+        }
+
         when (params.method) {
             DesyncMethod.OFF -> {
                 writeAll(socket, firstPayload, 0, firstPayload.size)
@@ -112,6 +121,12 @@ class NoRootDesync(
             }
 
             DesyncMethod.SNI_REPLACE -> {
+                if (!inspect.sniReplaceable) {
+                    // Nothing to rewrite: no visible SNI, or it is a decoy under ECH.
+                    log("desync: no rewritable SNI — sending the ClientHello untouched")
+                    writeAll(socket, firstPayload, 0, firstPayload.size)
+                    return@withContext socket
+                }
                 val rewritten = TlsParser.replaceSni(firstPayload, params.fakeSni)
                 if (rewritten != null) {
                     log("desync: SNI rewritten to ${params.fakeSni}")
@@ -125,9 +140,13 @@ class NoRootDesync(
             }
 
             DesyncMethod.COMBINED -> {
-                val rewritten = TlsParser.replaceSni(firstPayload, params.fakeSni)
+                val rewritten = if (inspect.sniReplaceable) {
+                    TlsParser.replaceSni(firstPayload, params.fakeSni)
+                } else {
+                    null
+                }
                 if (rewritten == null) {
-                    log("desync: combined rewrite failed, plain split")
+                    log("desync: combined rewrite unavailable, plain split")
                     val n = params.splitN.coerceIn(1, firstPayload.size - 1)
                     writeAll(socket, firstPayload, 0, n)
                     delay(params.delayMs.toLong().coerceIn(0, 500))

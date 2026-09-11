@@ -59,7 +59,6 @@ internal fun HomeScreenContent(
 ) {
     val stateColors = colorsFor(state)
     val safeDrawingPadding = WindowInsets.safeDrawing.asPaddingValues()
-    val settings by vm.settings.collectAsStateWithLifecycle()
     val configs by vm.configs.collectAsStateWithLifecycle()
     val selectedConfigId by vm.selectedConfigId.collectAsStateWithLifecycle()
     val stats by vm.stats.collectAsStateWithLifecycle()

@@ -1,21 +1,13 @@
 package com.armin7270.snispoof.core.proxy
 
+import com.armin7270.snispoof.core.crypto.X25519
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.math.BigInteger
-import java.security.KeyFactory
-import java.security.KeyPairGenerator
 import java.security.MessageDigest
-import java.security.PrivateKey
-import java.security.PublicKey
 import java.security.SecureRandom
-import java.security.spec.NamedParameterSpec
-import java.security.interfaces.XECPublicKey
-import java.security.spec.XECPublicKeySpec
 import javax.crypto.Cipher
-import javax.crypto.KeyAgreement
 import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -50,6 +42,14 @@ object Tls13Client {
         val conn = Connection(input, output, sni, alpn)
         return conn.run(fragmenter, fragmentDelayMs)
     }
+
+    /**
+     * X25519 is bundled (see [com.armin7270.snispoof.core.crypto.X25519]) so the
+     * tunnel works on every supported Android release — the JDK `XDH` provider it
+     * replaced only exists from API 33, which silently killed config mode on
+     * Android 7-12.
+     */
+    fun isSupported(): Boolean = true
 
     // ------------------------------------------------------------------ crypto
 
@@ -126,25 +126,24 @@ object Tls13Client {
         private var clientSeq = 0L
         private var serverSeq = 0L
 
+        /** keys of the epoch currently used to read server records */
+        private lateinit var sKey: ByteArray
+        private lateinit var sIv: ByteArray
+
         private lateinit var cHsKey: ByteArray
         private lateinit var cHsIv: ByteArray
-        private lateinit var sHsKey: ByteArray
-        private lateinit var sHsIv: ByteArray
         private lateinit var cApKey: ByteArray
         private lateinit var cApIv: ByteArray
-        private lateinit var sApKey: ByteArray
-        private lateinit var sApIv: ByteArray
 
         fun run(fragmenter: ((ByteArray) -> List<ByteArray>)?, delayMs: Int): Session {
-            val kpg = KeyPairGenerator.getInstance("XDH")
-            kpg.initialize(NamedParameterSpec.X25519)
-            val kp = kpg.genKeyPair()
-            val pub = kp.public as XECPublicKey
-            val pubLe = toLe32(pub.u)
+            val (privScalar, pubLe) = X25519.keyPair()
             val random = ByteArray(32).also { SecureRandom().nextBytes(it) }
 
             val ch = buildClientHello(pubLe, random)
-            transcript.write(ch)
+            // The transcript covers handshake messages only — TLS record headers
+            // are NOT part of it (RFC 8446 §4.4.1). Folding the 5-byte record
+            // header in here makes every derived secret differ from the peer's.
+            transcript.write(ch, 5, ch.size - 5)
 
             val chunks = fragmenter?.invoke(ch) ?: listOf(ch)
             for ((i, c) in chunks.withIndex()) {
@@ -160,7 +159,7 @@ object Tls13Client {
                     CT_HANDSHAKE -> {
                         if (body[0].toInt() != 0x02) throw IOException("tls: expected ServerHello")
                         transcript.write(body)
-                        parseServerHello(body, kp.private, kpg)
+                        parseServerHello(body, privScalar)
                         break
                     }
                     CT_ALERT -> throw IOException("tls: alert ${body.getOrNull(1) ?: body.getOrNull(0)}")
@@ -169,19 +168,20 @@ object Tls13Client {
                 }
             }
 
-            // Encrypted handshake: EE, Cert, CV, Finished
+            // Encrypted handshake: EE, Cert, CV, Finished. Handshake messages may
+            // be coalesced into one record or span several, so accumulate.
+            var pending = ByteArray(0)
             var serverFinished = false
             while (!serverFinished) {
-                val (ct, plain) = readEncrypted(sHsKey, sHsIv, serverSeq)
-                serverSeq++
-                if (ct == CT_CCS) continue
+                val (ct, content) = readDecrypted()
                 if (ct != CT_HANDSHAKE) throw IOException("tls: unexpected record $ct in handshake")
+                pending += content
                 var q = 0
-                while (q + 4 <= plain.size) {
-                    val hsType = plain[q].toInt() and 0xff
-                    val hsLen = u24(plain, q + 1)
-                    if (q + 4 + hsLen > plain.size) throw IOException("tls: truncated handshake msg")
-                    val msg = plain.copyOfRange(q, q + 4 + hsLen)
+                while (q + 4 <= pending.size) {
+                    val hsType = pending[q].toInt() and 0xff
+                    val hsLen = u24(pending, q + 1)
+                    if (q + 4 + hsLen > pending.size) break // message continues in the next record
+                    val msg = pending.copyOfRange(q, q + 4 + hsLen)
                     transcript.write(msg)
                     when (hsType) {
                         0x08, 0x0b, 0x0f -> Unit // encrypted extensions / cert / cert verify
@@ -189,7 +189,9 @@ object Tls13Client {
                         else -> throw IOException("tls: unexpected handshake type $hsType")
                     }
                     q += 4 + hsLen
+                    if (serverFinished) break
                 }
+                pending = if (q >= pending.size) ByteArray(0) else pending.copyOfRange(q, pending.size)
             }
 
             // application (master) secrets from the full transcript
@@ -200,22 +202,28 @@ object Tls13Client {
             val sApSecret = deriveSecret(master, "s ap traffic", thFull)
             cApKey = expandLabel(cApSecret, "key", ByteArray(0), 16)
             cApIv = expandLabel(cApSecret, "iv", ByteArray(0), 12)
-            sApKey = expandLabel(sApSecret, "key", ByteArray(0), 16)
-            sApIv = expandLabel(sApSecret, "iv", ByteArray(0), 12)
-            serverSeq = 0
 
-            // client Finished under handshake keys
+            // client Finished under the handshake keys
             val fk = expandLabel(cHsSecret!!, "finished", ByteArray(0), 32)
             val verify = hmacSha256(fk, transcriptHash())
-            val finMsg = byteArrayOf(0x14) + byteArrayOf(((verify.size ushr 16) and 0xff).toByte(), ((verify.size ushr 8) and 0xff).toByte(), (verify.size and 0xff).toByte()) + verify
+            val finMsg = byteArrayOf(0x14) +
+                    byteArrayOf(((verify.size ushr 16) and 0xff).toByte(), ((verify.size ushr 8) and 0xff).toByte(), (verify.size and 0xff).toByte()) +
+                    verify
             transcript.write(finMsg)
-            val inner = byteArrayOf(CT_HANDSHAKE.toByte()) + finMsg
-            val hdr = byteArrayOf(CT_APPDATA.toByte(), 0x03, 0x03) +
-                    byteArrayOf((((inner.size + 16) ushr 8) and 0xff).toByte(), ((inner.size + 16) and 0xff).toByte())
+            // TLSInnerPlaintext = content || type (RFC 8446 §5.2)
+            val inner = finMsg + byteArrayOf(CT_HANDSHAKE.toByte())
+            val hdr = recordHeader(CT_APPDATA, inner.size + 16)
             val enc = aead(cHsKey, nonce(cHsIv, clientSeq), hdr, inner, true)
             clientSeq++
             output.write(hdr + enc)
             output.flush()
+
+            // both directions move to the application epoch (sequence numbers restart)
+            clientSeq = 0
+            useServerKeys(
+                expandLabel(sApSecret, "key", ByteArray(0), 16),
+                expandLabel(sApSecret, "iv", ByteArray(0), 12),
+            )
 
             return Session(Writer(), Reader())
         }
@@ -230,16 +238,22 @@ object Tls13Client {
             val sni = sni.encodeToByteArray()
             val session = ByteArray(32).also { SecureRandom().nextBytes(it) }
             val exts = ArrayList<ByteArray>()
+            // server_name: list<2> = entryLen<2> + nameType(1) + hostLen<2> + host
             exts.add(u16(0x0000) + u16(sni.size + 5) + u16(sni.size + 3) +
                     byteArrayOf(0) + u16(sni.size) + sni)
             exts.add(u16(0x0017) + u16(0)) // extended_master_secret
             exts.add(u16(0x000a) + u16(6) + u16(4) + u16(0x001d) + u16(0x0018))
             exts.add(u16(0x000b) + u16(2) + byteArrayOf(1, 0))
-            exts.add(u16(0x0010) + u16(1 + 2 + alpn.length) +
-                    byteArrayOf(alpn.length.toByte()) + alpn.encodeToByteArray())
+            // ALPN: ProtocolNameList<2> = ProtocolName<1> per entry.
+            // data = listLen(2) + nameLen(1) + name  -> 3 + alpn.length
+            exts.add(u16(0x0010) + u16(3 + alpn.length) +
+                    u16(1 + alpn.length) + byteArrayOf(alpn.length.toByte()) + alpn.encodeToByteArray())
             exts.add(u16(0x000d) + u16(12) + u16(10) +
                     u16(0x0403) + u16(0x0804) + u16(0x0401) + u16(0x0501) + u16(0x0805))
-            exts.add(u16(0x0033) + u16(4 + 32) + u16(0x001d) + u16(32) + pubLe)
+            // key_share (ClientHello form): client_shares<2> = KeyShareEntry
+            // data = listLen(2) + group(2) + keyLen(2) + key(32)  -> 38
+            exts.add(u16(0x0033) + u16(2 + 2 + 2 + 32) + u16(2 + 2 + 32) +
+                    u16(0x001d) + u16(32) + pubLe)
             exts.add(u16(0x002b) + u16(3) + byteArrayOf(2) + u16(0x0304)) // TLS 1.3 only
             exts.add(u16(0x002d) + u16(2) + byteArrayOf(1, 1))
             val extBlock = u16(exts.sumOf { it.size }) + exts.reduce { a, b -> a + b }
@@ -255,7 +269,7 @@ object Tls13Client {
         private var hsSecret: ByteArray? = null
         private var cHsSecret: ByteArray? = null
 
-        private fun parseServerHello(sh: ByteArray, priv: PrivateKey, kpg: KeyPairGenerator) {
+        private fun parseServerHello(sh: ByteArray, privateScalar: ByteArray) {
             if (sh.size < 44) throw IOException("tls: short ServerHello")
             val sidLen = sh[38].toInt() and 0xff
             var p = 39 + sidLen
@@ -282,14 +296,9 @@ object Tls13Client {
                 p = b + len
             }
             val srv = srvPub ?: throw IOException("tls: no x25519 key_share")
-            val kag = KeyAgreement.getInstance("XDH")
-            kag.init(priv)
-            val kf = KeyFactory.getInstance("XDH")
-            val peerPub: PublicKey = kf.generatePublic(
-                XECPublicKeySpec(NamedParameterSpec.X25519, BigInteger(1, srv.reversedArray()))
-            )
-            kag.doPhase(peerPub, true)
-            val shared = pad32(kag.generateSecret())
+            // The peer's key_share is a 32-byte little-endian u-coordinate; the
+            // bundled RFC 7748 implementation takes exactly that.
+            val shared = X25519.scalarMult(privateScalar, srv)
 
             val emptyHash = sha256(ByteArray(0))
             val early = hkdfExtract(ByteArray(32), ByteArray(32))
@@ -300,10 +309,11 @@ object Tls13Client {
             val sHsSecret = deriveSecret(hsSecret!!, "s hs traffic", th)
             cHsKey = expandLabel(cHsSecret!!, "key", ByteArray(0), 16)
             cHsIv = expandLabel(cHsSecret!!, "iv", ByteArray(0), 12)
-            sHsKey = expandLabel(sHsSecret, "key", ByteArray(0), 16)
-            sHsIv = expandLabel(sHsSecret, "iv", ByteArray(0), 12)
+            useServerKeys(
+                expandLabel(sHsSecret, "key", ByteArray(0), 16),
+                expandLabel(sHsSecret, "iv", ByteArray(0), 12),
+            )
             clientSeq = 0
-            serverSeq = 0
         }
 
         // ---------------------------------------------------------- record io
@@ -317,12 +327,6 @@ object Tls13Client {
             ((b[off].toInt() and 0xff) shl 16) or ((b[off + 1].toInt() and 0xff) shl 8) or
                     (b[off + 2].toInt() and 0xff)
 
-        private fun u16b(v: Int): ByteArray =
-            byteArrayOf(((v ushr 8) and 0xff).toByte(), (v and 0xff).toByte())
-
-        private fun pad32(b: ByteArray): ByteArray =
-            if (b.size == 32) b else ByteArray(32 - b.size) + b
-
         private fun readRecord(): Triple<Int, Int, ByteArray> {
             val hdr = ByteArray(5)
             readFull(hdr)
@@ -334,18 +338,61 @@ object Tls13Client {
             return Triple(ct, len, body)
         }
 
-        private fun readEncrypted(key: ByteArray, iv: ByteArray, seq: Long): Pair<Int, ByteArray> {
-            val hdr = ByteArray(5)
-            readFull(hdr)
-            val len = u16(hdr, 3)
-            if (len <= 16 || len > 16640) throw IOException("tls: bad enc record len $len")
-            val body = ByteArray(len)
-            readFull(body)
-            val plain = aead(key, nonce(iv, seq), hdr, body, false)
-            val innerType = plain[0].toInt() and 0xff
+        private fun recordHeader(ct: Int, len: Int): ByteArray =
+            byteArrayOf(ct.toByte(), 0x03, 0x03) +
+                    byteArrayOf(((len ushr 8) and 0xff).toByte(), (len and 0xff).toByte())
+
+        /** Switches the read direction to a new key epoch; sequence restarts at 0. */
+        private fun useServerKeys(key: ByteArray, iv: ByteArray) {
+            sKey = key
+            sIv = iv
+            serverSeq = 0
+        }
+
+        /**
+         * Reads one record and returns the real inner content type plus content.
+         *
+         * Handles, in the encrypted epoch:
+         *  - plaintext CCS (outer type 20): middlebox compatibility, no sequence
+         *    number is consumed and the record carries no AEAD payload;
+         *  - plaintext alerts (outer type 21);
+         *  - AEAD-protected records (outer type 23), whose TLSInnerPlaintext is
+         *    `content || type || zeros` (RFC 8446 §5.2) — so the content type is
+         *    the last non-zero byte, NOT the first byte.
+         */
+        private fun readDecrypted(): Pair<Int, ByteArray> {
+            while (true) {
+                val hdr = ByteArray(5)
+                readFull(hdr)
+                val outerCt = hdr[0].toInt() and 0xff
+                val len = u16(hdr, 3)
+                if (len <= 0 || len > 16640) throw IOException("tls: bad record len $len")
+                val body = ByteArray(len)
+                readFull(body)
+                when (outerCt) {
+                    CT_CCS -> continue // no sequence number consumed
+                    CT_ALERT -> throw IOException("tls: alert ${body.getOrNull(1) ?: body.getOrNull(0)}")
+                    CT_APPDATA -> {
+                        if (len <= 16) throw IOException("tls: bad encrypted record len $len")
+                        val plain = aead(sKey, nonce(sIv, serverSeq), hdr, body, false)
+                        serverSeq++
+                        return splitInnerPlaintext(plain)
+                    }
+                    else -> throw IOException("tls: unexpected record type $outerCt")
+                }
+            }
+        }
+
+        /**
+         * TLSInnerPlaintext = content || ContentType || zeros. Strips the zero
+         * padding and splits off the trailing content type.
+         */
+        private fun splitInnerPlaintext(plain: ByteArray): Pair<Int, ByteArray> {
             var end = plain.size
             while (end > 1 && plain[end - 1] == 0.toByte()) end--
-            return innerType to plain.copyOfRange(1, end)
+            if (end < 1) throw IOException("tls: empty inner plaintext")
+            val type = plain[end - 1].toInt() and 0xff
+            return type to plain.copyOfRange(0, end - 1)
         }
 
         private fun readFull(buf: ByteArray) {
@@ -357,27 +404,17 @@ object Tls13Client {
             }
         }
 
-        private fun toLe32(u: BigInteger): ByteArray {
-            val be = u.toByteArray()
-            val stripped = if (be.size > 1 && be[0] == 0.toByte()) be.copyOfRange(1, be.size) else be
-            val le = ByteArray(32)
-            for (i in stripped.indices) {
-                if (i >= 32) break
-                le[i] = stripped[stripped.size - 1 - i]
-            }
-            return le
-        }
-
         private inner class Writer : OutputStream() {
             override fun write(b: Int) = throw UnsupportedOperationException()
             override fun write(b: ByteArray, off: Int, len: Int) {
+                if (len <= 0) return
                 var o = off
                 var remaining = len
                 while (remaining > 0) {
                     val chunk = min(1400, remaining)
-                    val inner = byteArrayOf(CT_APPDATA.toByte()) + b.copyOfRange(o, o + chunk)
-                    val hdr = byteArrayOf(CT_APPDATA.toByte(), 0x03, 0x03) +
-                            u16b(inner.size + 16)
+                    // TLSInnerPlaintext = content || type (RFC 8446 §5.2)
+                    val inner = b.copyOfRange(o, o + chunk) + byteArrayOf(CT_APPDATA.toByte())
+                    val hdr = recordHeader(CT_APPDATA, inner.size + 16)
                     val enc = aead(cApKey, nonce(cApIv, clientSeq), hdr, inner, true)
                     clientSeq++
                     output.write(hdr + enc)
@@ -398,6 +435,7 @@ object Tls13Client {
             }
 
             override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (len == 0) return 0
                 if (!fill()) return -1
                 val n = min(len, buffer.size - pos)
                 System.arraycopy(buffer, pos, b, off, n)
@@ -408,17 +446,17 @@ object Tls13Client {
             private fun fill(): Boolean {
                 if (pos < buffer.size) return true
                 while (true) {
-                    val (ct, plain) = readEncrypted(sApKey, sApIv, serverSeq)
-                    serverSeq++
+                    val (ct, content) = readDecrypted()
                     when (ct) {
                         CT_APPDATA -> {
-                            buffer = plain
+                            if (content.isEmpty()) continue
+                            buffer = content
                             pos = 0
                             return true
                         }
-                        CT_HANDSHAKE -> Unit // NewSessionTicket / KeyUpdate: ignore
-                        CT_ALERT -> throw IOException("tls: alert ${plain.getOrNull(0)}")
-                        CT_CCS -> Unit
+                        CT_HANDSHAKE -> Unit // NewSessionTicket / KeyUpdate
+                        CT_ALERT -> throw IOException("tls: alert ${content.getOrNull(0)}")
+                        else -> Unit
                     }
                 }
             }

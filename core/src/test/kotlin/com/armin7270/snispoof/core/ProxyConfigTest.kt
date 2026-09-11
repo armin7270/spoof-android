@@ -11,6 +11,28 @@ import java.util.Base64
 
 class ProxyConfigTest {
 
+    /**
+     * The store refuses vmess at import time, so the filter it relies on has to
+     * keep working: a mixed link list must yield only the usable protocols.
+     */
+    @Test
+    fun `vmess links are identifiable so import can refuse them`() {
+        val vmessJson = """{"v":"2","ps":"x","add":"cf.example.com","port":"443",""" +
+                """"id":"b831381d-6324-4d53-ad4f-8cda48b30811","aid":"0","net":"ws",""" +
+                """"type":"none","host":"h.example.com","path":"/ws","tls":"tls"}"""
+        val text = buildString {
+            append("vless://d342d11e-d424-4583-b36e-524ab1f0afa4@104.16.0.0:443?type=ws&security=tls#A\n")
+            append("vmess://").append(Base64.getEncoder().encodeToString(vmessJson.toByteArray())).append('\n')
+            append("trojan://pw@104.17.0.0:443?security=tls#B\n")
+        }
+        val parsed = ProxyConfigParser.parseAll(text)
+        assertEquals(3, parsed.size)
+        assertEquals(1, parsed.count { it.proto == ProxyProtocol.VMESS })
+        val usable = parsed.filter { it.proto != ProxyProtocol.VMESS }
+        assertEquals(2, usable.size)
+        assertTrue(usable.none { it.proto == ProxyProtocol.VMESS })
+    }
+
     @Test
     fun `parses vless ws tls config`() {
         val uri = "vless://d342d11e-d424-4583-b36e-524ab1f0afa4@104.16.0.0:443" +

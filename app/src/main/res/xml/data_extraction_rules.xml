@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup/transfer policy for Android 12+.
+
+  This app stores proxy credentials (VLESS UUIDs, Trojan passwords) and the
+  per-app routing list in SharedPreferences. Neither may leave the device:
+  cloud backup and device-to-device transfer are both disabled here, which
+  mirrors android:allowBackup="false" for older releases.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

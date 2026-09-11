@@ -53,6 +53,12 @@ object VpnStateStore {
 
     private val startedAtMs = MutableStateFlow(0L)
 
+    // Read-modify-write on the flows below happens from engine threads and
+    // service coroutines at once; without this lock bursts of events drop lines
+    // or stats updates instead of composing.
+    private val logLock = Any()
+    private val statsLock = Any()
+
     fun markConnecting() {
         _errorMessage.value = null
         _state.value = ConnectionState.CONNECTING
@@ -86,7 +92,7 @@ object VpnStateStore {
     }
 
     fun updateStats(transform: (EngineStats) -> EngineStats) {
-        _stats.value = transform(_stats.value)
+        synchronized(statsLock) { _stats.value = transform(_stats.value) }
     }
 
     fun setStats(s: EngineStats) {
@@ -97,13 +103,15 @@ object VpnStateStore {
         val stamped = "%1\$TH:%1\$TM:%1\$TS.%1\$TL  %2\$s"
             .format(System.currentTimeMillis(), line)
         android.util.Log.i("SNISpoof", line)
-        val next = ArrayList<String>(_logs.value.size + 1)
-        next.addAll(_logs.value)
-        next.add(stamped)
-        _logs.value = if (next.size > 500) next.subList(next.size - 500, next.size) else next
+        synchronized(logLock) {
+            val next = ArrayList<String>(_logs.value.size + 1)
+            next.addAll(_logs.value)
+            next.add(stamped)
+            _logs.value = if (next.size > 500) next.subList(next.size - 500, next.size) else next
+        }
     }
 
     fun clearLogs() {
-        _logs.value = emptyList()
+        synchronized(logLock) { _logs.value = emptyList() }
     }
 }

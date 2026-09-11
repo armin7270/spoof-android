@@ -275,11 +275,16 @@ object PacketBuilder {
         out[14] = (srcIp ushr 8).toByte(); out[15] = srcIp.toByte()
         out[16] = (dstIp ushr 24).toByte(); out[17] = (dstIp ushr 16).toByte()
         out[18] = (dstIp ushr 8).toByte(); out[19] = dstIp.toByte()
+        // the IPv4 header checksum must be filled in before anything else sums the
+        // header, and the ICMP checksum must cover the quoted datagram, so the
+        // payload copy has to happen BEFORE both checksums are computed.
+        val ipCsum = Checksum.compute(out, 0, 20)
+        out[10] = (ipCsum ushr 8).toByte(); out[11] = ipCsum.toByte()
         out[20] = 3 // dest unreachable
         out[21] = 3 // port unreachable
+        System.arraycopy(original, off, out, 28, quoted)
         val csum = Checksum.compute(out, 20, 8 + quoted)
         out[22] = (csum ushr 8).toByte(); out[23] = csum.toByte()
-        System.arraycopy(original, off, out, 28, quoted)
         return out
     }
 

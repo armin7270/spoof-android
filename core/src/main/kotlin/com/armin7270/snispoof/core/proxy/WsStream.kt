@@ -24,7 +24,7 @@ class WsStream(
 
     private fun upgrade() {
         val keyB = ByteArray(16).also { SecureRandom().nextBytes(it) }
-        val key = java.util.Base64.getEncoder().encodeToString(keyB)
+        val key = com.armin7270.snispoof.core.util.Base64.encode(keyB)
         val req = buildString {
             append("GET ").append(if (path.startsWith("/")) path else "/$path").append(" HTTP/1.1\r\n")
             append("Host: ").append(host).append("\r\n")
@@ -38,7 +38,6 @@ class WsStream(
         output.write(req.toByteArray(Charsets.US_ASCII))
         output.flush()
         // read the response headers
-        var statusLine = ""
         val header = StringBuilder()
         var last4 = IntArray(4)
         while (true) {
@@ -50,7 +49,7 @@ class WsStream(
             if (header.length > 16384) throw java.io.IOException("ws: oversized upgrade response")
         }
         val text = header.toString()
-        statusLine = text.lineSequence().firstOrNull() ?: ""
+        val statusLine = text.lineSequence().firstOrNull() ?: ""
         if (!statusLine.contains(" 101")) throw java.io.IOException("ws: upgrade failed: $statusLine")
         open = true
     }

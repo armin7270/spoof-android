@@ -46,7 +46,9 @@ class TcpFlow internal constructor(
     // receive side (app -> relay)
     private var rcvNext: Long = 0
     private val outOfOrder = TreeMap<Long, ByteArray>()
-    private val rcvChannel = Channel<ByteArray>(Channel.UNLIMITED)
+    // Bounded receive queue (~600 KB at max MSS) so a stalled relay exerts TCP
+    // flow control instead of growing the heap; see bufferForRelay().
+    private val rcvChannel = Channel<ByteArray>(512)
     @Volatile private var finReceived = false
     private var pendingFin: Long = -1L
 
@@ -60,6 +62,7 @@ class TcpFlow internal constructor(
     @Volatile private var finAcked = false
     private var synSeq: Long = -1L
     private var synAckSent = false
+    @Volatile private var lastProbeAt: Long = 0L
 
     class Segment(val seq: Long, val data: ByteArray, val fin: Boolean) {
         var sentAt: Long = 0
@@ -104,6 +107,13 @@ class TcpFlow internal constructor(
                 }
                 if (flags and Flags.ACK != 0 && ack == sndNext) {
                     state = State.ESTABLISHED
+                    // This ACK advertises the peer's receive window and is the only
+                    // one we may ever see for server-speaks-first protocols (SSH,
+                    // SMTP, IMAP, ...). Without recording it here, transmit()
+                    // refuses to send because peerWindow is still 0, processAck()
+                    // never runs again and the flow stalls with an ever-growing
+                    // send queue.
+                    synchronized(this) { peerWindow = p.tcpWindow }
                     stack.listener?.onFlow(this)
                     if (payLen > 0) receiveData(seq, payLen, p)
                 }
@@ -128,9 +138,8 @@ class TcpFlow internal constructor(
 
         if (seq == rcvNext) {
             val chunk = p.data.copyOfRange(payOff, payOff + payLen)
-            bytesDown += payLen
+            if (!bufferForRelay(chunk)) return // backpressure: don't ACK what we can't hold
             rcvNext = end
-            rcvChannel.trySend(chunk)
             drainOutOfOrder()
         } else if (seqLess(rcvNext, seq)) {
             // future data: buffer it (bounded)
@@ -139,13 +148,26 @@ class TcpFlow internal constructor(
             // partial overlap: clip the fresh tail
             val skip = (rcvNext - seq).toInt()
             val chunk = p.data.copyOfRange(payOff + skip, payOff + payLen)
-            bytesDown += chunk.size
+            if (!bufferForRelay(chunk)) return
             rcvNext = end
-            rcvChannel.trySend(chunk)
             drainOutOfOrder()
         }
         // else: pure retransmission of already-received data -> just re-ACK
         sendAck()
+    }
+
+    /**
+     * Queues a chunk for the relay, reporting whether it fits.
+     *
+     * The queue is bounded so a relay that stops reading cannot grow the heap.
+     * When it is full the segment is deliberately left unacknowledged: the ACK we
+     * send still covers the old [rcvNext], so the peer retransmits — standard TCP
+     * flow control — instead of the data being dropped silently.
+     */
+    private fun bufferForRelay(chunk: ByteArray): Boolean {
+        if (!rcvChannel.trySend(chunk).isSuccess) return false
+        bytesDown += chunk.size
+        return true
     }
 
     private fun drainOutOfOrder() {
@@ -155,15 +177,13 @@ class TcpFlow internal constructor(
             val chunk = first.value
             val end = (seq + chunk.size) and 0xffffffffL
             if (seq == rcvNext) {
+                if (!bufferForRelay(chunk)) return
                 rcvNext = end
-                bytesDown += chunk.size
-                rcvChannel.trySend(chunk)
                 outOfOrder.remove(seq)
             } else if (seqLess(seq, rcvNext) && seqLess(rcvNext, end)) {
                 val skip = (rcvNext - seq).toInt()
+                if (!bufferForRelay(chunk.copyOfRange(skip, chunk.size))) return
                 rcvNext = end
-                bytesDown += chunk.size - skip
-                rcvChannel.trySend(chunk.copyOfRange(skip, chunk.size))
                 outOfOrder.remove(seq)
             } else break
         }
@@ -328,12 +348,15 @@ class TcpFlow internal constructor(
         }
         for (seg in toResend) sendSegment(seg)
 
-        // zero-window probe: nudge the peer by retransmitting the oldest segment
+        // zero-window probe: if the peer's window is closed or was never learned,
+        // nudge it with the oldest queued segment. This must also cover segments
+        // that have never been sent (sentAt == 0), otherwise a queue built while
+        // the window was unknown stays stuck forever.
         val windowOpen = synchronized(this) { peerWindow > 0 }
         if (!windowOpen) {
-            val oldest = synchronized(this) { sendQueue.firstOrNull { it.sentAt > 0 } }
-            if (oldest != null && now - oldest.sentAt >= 2000) {
-                oldest.sentAt = now
+            val oldest = synchronized(this) { sendQueue.firstOrNull() }
+            if (oldest != null && now - lastProbeAt >= 2000) {
+                lastProbeAt = now
                 sendSegment(oldest)
             }
         }

@@ -68,7 +68,7 @@ class PacketEngine(
     val tcpStack = TcpStack(sink, mtu, FlowListener { flow -> onTcpFlow(flow) }, log)
     private fun onTcpFlow(flow: TcpFlow) {
         counters.activeFlows.incrementAndGet()
-        val decision = router.pick(flow.dstIp, flow.dstPort, dnsServer.hostnameMap[flow.dstIp])
+        val decision = router.pick(flow.dstIp, flow.dstPort, dnsServer.hostnamesFor(flow.dstIp))
         relay.start(flow, decision)
     }
 

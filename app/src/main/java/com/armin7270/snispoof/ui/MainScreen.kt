@@ -26,8 +26,6 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun MainScreen(
     vm: VpnViewModel,
-    onOpenSettings: () -> Unit,
-    onOpenApps: () -> Unit,
     onConnect: () -> Unit,
 ) {
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -58,7 +56,6 @@ internal fun MainScreen(
                         },
                         persian = persian,
                         onToggleLanguage = { fa -> vm.setLanguage(if (fa) "fa" else "en") },
-                        onClose = { scope.launch { drawerState.close() } },
                     )
                 }
             },

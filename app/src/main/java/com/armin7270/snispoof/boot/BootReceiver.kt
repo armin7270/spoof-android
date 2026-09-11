@@ -25,7 +25,13 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val autoBoot = PreferencesRepository(context).current().autoStartBoot
                 if (autoBoot) {
-                    VpnController.start(context)
+                    // Android 12+ forbids starting a foreground service from a
+                    // BOOT_COMPLETED broadcast; without this guard the whole app
+                    // crashes during boot instead of simply staying disconnected.
+                    runCatching { VpnController.start(context) }
+                        .onFailure {
+                            android.util.Log.w("SNISpoof", "auto-start blocked at boot", it)
+                        }
                 }
             } finally {
                 pending.finish()

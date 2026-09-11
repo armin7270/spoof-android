@@ -58,7 +58,7 @@ class UdpForwarder(
         }
 
         val key = FlowKey(p.srcIp, p.srcPort, p.dstIp, p.dstPort)
-        val sock = flows[key] ?: createFlow(key, p) ?: return
+        val sock = flows[key] ?: createFlow(key) ?: return
         lastUse[key]?.set(System.currentTimeMillis())
         val data = p.data.copyOfRange(off, off + len)
         try {
@@ -70,12 +70,16 @@ class UdpForwarder(
         }
     }
 
-    private fun createFlow(key: FlowKey, p: IpPacket): DatagramSocket? = runCatching {
+    private fun createFlow(key: FlowKey): DatagramSocket? = runCatching {
         val sock = DatagramSocket(null)
         protector.protectSocket(sock)
         sock.reuseAddress = true
         sock.bind(null)
         sock.soTimeout = 60_000
+        // Pin the socket to the flow's peer: after connect() the OS drops any
+        // datagram whose source does not match, so a spoofed reply can neither
+        // be delivered to the app nor counted as its traffic.
+        sock.connect(InetAddress.getByAddress(Ip4.bytes(key.dstIp)), key.dstPort)
         flows[key] = sock
         lastUse[key] = AtomicLong(System.currentTimeMillis())
         val self = this
@@ -85,14 +89,10 @@ class UdpForwarder(
                 try {
                     val resp = DatagramPacket(buf, buf.size)
                     sock.receive(resp)
-                    val srcBytes = resp.address.address
-                    val srcIp = if (srcBytes.size == 4) {
-                        ((srcBytes[0].toInt() and 0xff) shl 24) or ((srcBytes[1].toInt() and 0xff) shl 16) or
-                                ((srcBytes[2].toInt() and 0xff) shl 8) or (srcBytes[3].toInt() and 0xff)
-                    } else continue
+                    // connected socket: source is always key.dstIp/key.dstPort
                     val pkt = PacketBuilder.udp(
-                        srcIp = srcIp, dstIp = key.srcIp,
-                        srcPort = resp.port, dstPort = key.srcPort,
+                        srcIp = key.dstIp, dstIp = key.srcIp,
+                        srcPort = key.dstPort, dstPort = key.srcPort,
                         payload = buf.copyOfRange(0, resp.length),
                     )
                     self.sink.send(pkt)

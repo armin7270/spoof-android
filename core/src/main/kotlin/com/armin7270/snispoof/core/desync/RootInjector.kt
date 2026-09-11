@@ -34,37 +34,43 @@ class RootInjector(private val helperPath: String, private val log: (String) -> 
     private val ids = AtomicInteger(1)
     @Volatile private var dead = false
 
-    fun start(): Boolean = synchronized(procLock) {
-        if (process != null && process!!.isAlive) return true
-        try {
-            val p = ProcessBuilder("su", "-c", helperPath)
-                .redirectErrorStream(false)
-                .start()
-            process = p
-            writer = BufferedWriter(OutputStreamWriter(p.outputStream, Charsets.US_ASCII))
-            dead = false
-            val reader = BufferedReader(InputStreamReader(p.inputStream, Charsets.US_ASCII))
-            Thread({
-                try {
-                    while (!dead) {
-                        val line = reader.readLine() ?: break
-                        handleLine(line.trim())
+    suspend fun start(): Boolean {
+        // The health check suspends, so it must happen OUTSIDE the monitor.
+        val spawned = synchronized(procLock) {
+            if (process != null && process!!.isAlive) return true
+            try {
+                val p = ProcessBuilder("su", "-c", helperPath)
+                    .redirectErrorStream(false)
+                    .start()
+                process = p
+                writer = BufferedWriter(OutputStreamWriter(p.outputStream, Charsets.US_ASCII))
+                dead = false
+                val reader = BufferedReader(InputStreamReader(p.inputStream, Charsets.US_ASCII))
+                Thread({
+                    try {
+                        while (!dead) {
+                            val line = reader.readLine() ?: break
+                            handleLine(line.trim())
+                        }
+                    } catch (_: Exception) {
+                    } finally {
+                        dead = true
+                        for (d in pending.values) d.complete(false)
+                        pending.clear()
                     }
-                } catch (_: Exception) {
-                } finally {
-                    dead = true
-                    for (d in pending.values) d.complete(false)
-                    pending.clear()
-                }
-            }, "root-injector-reader").apply { isDaemon = true }.start()
-            // health check
-            val ok = runCatching { kotlinx.coroutines.runBlocking { ping() } }.getOrDefault(false)
-            if (!ok) { log("root helper: no PONG") }
-            ok
-        } catch (e: Exception) {
-            log("root helper start failed: ${e.message}")
-            false
+                }, "root-injector-reader").apply { isDaemon = true }.start()
+                true
+            } catch (e: Exception) {
+                log("root helper start failed: ${e.message}")
+                false
+            }
         }
+        if (!spawned) return false
+        // start() runs off the main thread, so this is a bounded coroutine wait
+        // rather than a runBlocking() stall.
+        val ok = runCatching { ping() }.getOrDefault(false)
+        if (!ok) log("root helper: no PONG")
+        return ok
     }
 
     private fun handleLine(line: String) {

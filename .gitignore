@@ -14,3 +14,15 @@
 *.keystore
 !debug.keystore
 local.properties
+
+# native root-helper build output (tools/build-helper.*)
+/tools/build
+
+# release signing — keystore and its passwords must never be committed
+/keystore.properties
+
+# ready-to-install APK copies for manual testing (binary artifacts)
+/dist
+
+# extracted reference sources used for the redesign analysis (300MB)
+/reference

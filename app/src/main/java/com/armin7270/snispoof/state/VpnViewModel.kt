@@ -61,7 +61,8 @@ class VpnViewModel(private val appContext: Context) : ViewModel() {
 
     // ---- proxy configs ----
 
-    fun importConfigs(text: String): Int = configStore.import(text)
+    fun importConfigs(text: String): com.armin7270.snispoof.state.ImportResult =
+        configStore.import(text)
 
     fun selectConfig(id: String?) = configStore.select(id)
 
