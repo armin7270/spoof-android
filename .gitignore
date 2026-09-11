@@ -15,9 +15,6 @@
 !debug.keystore
 local.properties
 
-# native root-helper build output (tools/build-helper.*)
-/tools/build
-
 # release signing — keystore and its passwords must never be committed
 /keystore.properties
 

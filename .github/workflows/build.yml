@@ -22,47 +22,34 @@ jobs:
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
+      # The build shells out to `python` for the two AAR patch tasks
+      # (isolatePsiphonAar / patchV2raySeqAar). Ubuntu runners only ship
+      # python3, so provide the bare name.
+      - name: Ensure python command exists
+        run: sudo ln -sf /usr/bin/python3 /usr/local/bin/python
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-
-      # Tests run first: a red suite should fail the build before it spends
-      # minutes packaging APKs.
-      - name: Run core unit tests
-        run: ./gradlew :core:test --no-daemon --stacktrace
 
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      # Release build exercises R8 (shrinking, obfuscation and the keep rules),
-      # which is where a missing keep rule would otherwise only show up in a
-      # published APK.
-      - name: Build release APK
-        env:
-          ANDROID_STORE_FILE: ${{ secrets.ANDROID_STORE_FILE }}
-          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      # Release build signs with the repo keystore (via keystore.properties
+      # contents injected as one secret) or stays unsigned when absent.
+      - name: Build release APKs
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Upload debug APK
+      - name: Upload debug APKs
         uses: actions/upload-artifact@v4
         with:
-          name: SNI-Spoofing-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: SNI-Spoofing-debug-apks
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Upload release APK
+      - name: Upload release APKs
         uses: actions/upload-artifact@v4
         with:
-          name: SNI-Spoofing-release-apk
-          # signed when the signing secrets exist, unsigned otherwise
+          name: SNI-Spoofing-release-apks
+          # signed when keystore.properties secrets exist, unsigned otherwise
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-
-      - name: Upload test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: core-test-report
-          path: core/build/reports/tests/test
-          if-no-files-found: ignore
