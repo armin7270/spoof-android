@@ -67,6 +67,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.coroutineContext
 
 class UacVpnService : VpnService() {
@@ -183,7 +184,7 @@ class UacVpnService : VpnService() {
         val interruptedRouteProbeId = activeRouteProbeId
         routeProbeJob?.cancel()
         serviceScope.cancel()
-        runBlocking(Dispatchers.IO) { runCatching { cleanupRoute() } }
+        runBlocking(Dispatchers.IO) { runCatching { withTimeoutOrNull(2_500L) { cleanupRoute() } } }
         interruptedRouteProbeId?.let {
             RouteMtuProbeCoordinator.unregisterCancellation(it)
             RouteMtuProbeCoordinator.fail(it, CancellationException("VPN service stopped"))

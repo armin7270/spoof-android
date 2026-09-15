@@ -1,6 +1,7 @@
 package com.uacspoofer.mobile.vpn
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -108,6 +109,7 @@ class UacQuickSettingsTileService : TileService() {
             )
             startActivityAndCollapse(pendingIntent)
         } else {
+            @SuppressLint("StartActivityAndCollapseDeprecated")
             @Suppress("DEPRECATION")
             startActivityAndCollapse(intent)
         }

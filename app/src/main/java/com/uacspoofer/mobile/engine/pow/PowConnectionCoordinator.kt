@@ -2,6 +2,7 @@ package com.uacspoofer.mobile.engine.pow
 
 import android.net.ConnectivityManager
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.system.Os
@@ -651,7 +652,11 @@ class PowConnectionCoordinator(
     private fun underlyingLinkMtu(): Int = runCatching {
         val connectivity = service.getSystemService(ConnectivityManager::class.java) ?: return 0
         val network = connectivity.activeNetwork ?: return 0
-        connectivity.getLinkProperties(network)?.mtu ?: 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            connectivity.getLinkProperties(network)?.mtu ?: 0
+        } else {
+            0
+        }
     }.getOrDefault(0)
 
     private fun startQualityWatch() {

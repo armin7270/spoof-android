@@ -61,6 +61,7 @@ internal fun AnimatedDottedWave(
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.P)
 @Composable
 private fun PlatformAnimatedWave(
     accent: Color,

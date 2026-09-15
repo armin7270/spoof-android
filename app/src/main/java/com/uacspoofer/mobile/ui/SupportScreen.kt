@@ -120,7 +120,7 @@ internal fun SupportScreen(
                 item {
                     SupportLinkCard(
                         title = homeText("GitHub Project", "پروژه ${supportLtr("GitHub")}"),
-                        address = "Floxu1/UAC-SNI-Spoofer-Android",
+                        address = "armin7270/spoof-android",
                         icon = Icons.Outlined.NewReleases,
                         accent = SupportPurple,
                         onClick = { openExternalLink(context, AppUpdateManager.REPOSITORY_URL) },

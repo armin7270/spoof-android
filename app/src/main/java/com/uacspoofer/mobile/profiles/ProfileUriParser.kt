@@ -253,8 +253,9 @@ object ProfileUriParser {
         raw.split('&').filter { it.isNotBlank() }.forEach { part ->
             val split = part.split('=', limit = 2)
             val key = decode(split[0]).trim().lowercase()
-            require(key !in result) { "Duplicate parameter: $key" }
-            result[key] = decode(split.getOrElse(1) { "" })
+            if (key !in result) {
+                result[key] = decode(split.getOrElse(1) { "" })
+            }
         }
         return result
     }

@@ -105,9 +105,9 @@ class PowTunRelayConfigTest {
             mapDns = "10.0.0.2",
         )
         assertTrue(yaml.contains("mtu: 1280"))
-        assertTrue(yaml.contains("tcp-buffer-size: 524224"))
+        assertTrue(yaml.contains("tcp-buffer-size: 1048576"))
         assertTrue(yaml.contains("task-stack-size: 557056"))
-        assertTrue(yaml.contains("connect-timeout: 15000"))
+        assertTrue(yaml.contains("connect-timeout: 5000"))
         assertTrue(yaml.contains("port: ${PowCoreConfig.SOCKS_PORT}"))
         assertTrue(yaml.contains("address: '127.0.0.1'"))
         assertTrue(yaml.contains("udp: 'tcp'"))

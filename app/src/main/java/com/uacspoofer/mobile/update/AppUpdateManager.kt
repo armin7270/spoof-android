@@ -182,9 +182,9 @@ internal class AppUpdateManager(context: Context) {
     }
 
     companion object {
-        internal const val REPOSITORY_URL = "https://github.com/Floxu1/UAC-SNI-Spoofer-Android"
+        internal const val REPOSITORY_URL = "https://github.com/armin7270/spoof-android"
         internal const val RELEASES_URL = "$REPOSITORY_URL/releases"
-        private const val LATEST_RELEASE_API = "https://api.github.com/repos/Floxu1/UAC-SNI-Spoofer-Android/releases/latest"
+        private const val LATEST_RELEASE_API = "https://api.github.com/repos/armin7270/spoof-android/releases/latest"
         private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         private const val PREFERENCES_NAME = "app_update_state"
         private const val KEY_PENDING_DOWNLOAD_ID = "pending_download_id"

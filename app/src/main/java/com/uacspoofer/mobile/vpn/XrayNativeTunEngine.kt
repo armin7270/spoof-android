@@ -37,22 +37,22 @@ class XrayNativeTunEngine(private val context: Context) {
         NativeXrayRuntime.initialize(context)
         val tun = checkNotNull(establishTun()) { "VpnService.Builder.establish returned null" }
         descriptor = tun
-        val core = Libv2ray.newCoreController(object : CoreCallbackHandler {
-            override fun startup(): Long = 0L
-            override fun shutdown(): Long = 0L
-            override fun onEmitStatus(code: Long, message: String?): Long {
-                if (!message.isNullOrBlank()) {
-                    AppLogRepository.debug(LogSource.XRAY, "Native status=$code: $message")
-                }
-                return 0L
-            }
-        })
-        controller = core
-        totalUplink = 0L
-        totalDownlink = 0L
-        totalProbeUplink = 0L
-        totalProbeDownlink = 0L
         try {
+            val core = Libv2ray.newCoreController(object : CoreCallbackHandler {
+                override fun startup(): Long = 0L
+                override fun shutdown(): Long = 0L
+                override fun onEmitStatus(code: Long, message: String?): Long {
+                    if (!message.isNullOrBlank()) {
+                        AppLogRepository.debug(LogSource.XRAY, "Native status=$code: $message")
+                    }
+                    return 0L
+                }
+            })
+            controller = core
+            totalUplink = 0L
+            totalDownlink = 0L
+            totalProbeUplink = 0L
+            totalProbeDownlink = 0L
             core.startLoop(
                 MciNativeXrayConfig.build(edge, settings, profile, runtimeOptions, aiRoute),
                 tun.fd,

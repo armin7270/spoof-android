@@ -36,7 +36,7 @@ class TorDaemon(context: Context) {
     fun isRunning(): Boolean {
         if (!running.get()) return false
         if (torThread?.isAlive == true) return true
-        return process?.isAlive == true
+        return process?.isProcessAlive() == true
     }
 
     fun applyExitCountry(settings: TorEngineSettings): Boolean {
@@ -170,7 +170,7 @@ class TorDaemon(context: Context) {
         if (current != null) {
             current.destroy()
             runCatching { current.waitFor() }
-            if (current.isAlive) current.destroyForcibly()
+            if (current.isProcessAlive()) current.safeDestroyForcibly()
         }
         if (current != null || thread != null) {
             AppLogRepository.info(LogSource.TOR, "Tor process stopped")
@@ -333,9 +333,9 @@ class TorDaemon(context: Context) {
         AppLogRepository.info(LogSource.TOR, "Verifying torrc")
         val started = processBuilder(argv, dataDir).start()
         val output = started.inputStream.bufferedReader().readText()
-        val finished = started.waitFor(timeoutSec, TimeUnit.SECONDS)
+        val finished = started.waitForTimeout(timeoutSec, TimeUnit.SECONDS)
         if (!finished) {
-            started.destroyForcibly()
+            started.safeDestroyForcibly()
             error("torrc --verify-config timed out")
         }
         val code = started.exitValue()
@@ -623,4 +623,37 @@ class TorDaemon(context: Context) {
         internal const val BRIDGE_BOOTSTRAP_TIMEOUT_MS = 90_000L
         private const val MODE_0700 = 448
     }
+}
+
+private fun Process.isProcessAlive(): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        isAlive
+    } else {
+        try {
+            exitValue()
+            false
+        } catch (_: IllegalThreadStateException) {
+            true
+        }
+    }
+}
+
+private fun Process.safeDestroyForcibly() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        destroyForcibly()
+    } else {
+        destroy()
+    }
+}
+
+private fun Process.waitForTimeout(timeout: Long, unit: TimeUnit): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        return waitFor(timeout, unit)
+    }
+    val deadline = System.currentTimeMillis() + unit.toMillis(timeout)
+    while (System.currentTimeMillis() < deadline) {
+        if (!isProcessAlive()) return true
+        Thread.sleep(50)
+    }
+    return !isProcessAlive()
 }

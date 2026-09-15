@@ -14,8 +14,8 @@ internal object TorExec {
             add(binary.absolutePath)
             addAll(extraArgs)
         }
-        check(command.all { it.isNotEmpty() && !it.any(Char::isWhitespace) }) {
-            "Tor exec path cannot contain spaces: ${command.joinToString(" ")}"
+        check(command.all { it.isNotEmpty() }) {
+            "Tor exec argument cannot be empty"
         }
         return command
     }
