@@ -23,3 +23,4 @@ local.properties
 
 # extracted reference sources used for the redesign analysis (300MB)
 /reference
+.kotlin/

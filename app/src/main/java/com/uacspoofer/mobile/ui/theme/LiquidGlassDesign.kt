@@ -120,59 +120,6 @@ fun FloatingLiquidOrbsCanvas(
     accent: Color,
     isDark: Boolean,
 ) {
-    val transition = rememberInfiniteTransition(label = "liquid-orbs")
-
-    // Primary drifting orb animation
-    val orb1X by transition.animateFloat(
-        initialValue = 0.20f,
-        targetValue = 0.38f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "orb1-x",
-    )
-    val orb1Y by transition.animateFloat(
-        initialValue = 0.22f,
-        targetValue = 0.36f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(9500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "orb1-y",
-    )
-
-    // Secondary drifting orb animation
-    val orb2X by transition.animateFloat(
-        initialValue = 0.82f,
-        targetValue = 0.65f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(10500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "orb2-x",
-    )
-    val orb2Y by transition.animateFloat(
-        initialValue = 0.58f,
-        targetValue = 0.72f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(8800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "orb2-y",
-    )
-
-    // Breathing pulse
-    val breathingRadius by transition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.14f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "orb-breathing",
-    )
-
     val orb1Color = if (isDark) accent else LiquidGlassTokens.ElectricIndigo
     val orb2Color = if (isDark) LiquidGlassTokens.SunsetCoral else LiquidGlassTokens.RadiantCyan
     val orb3Color = if (isDark) LiquidGlassTokens.NeonSky else LiquidGlassTokens.VividMint
@@ -180,9 +127,9 @@ fun FloatingLiquidOrbsCanvas(
     Canvas(modifier = modifier.fillMaxSize()) {
         val width = size.width
         val height = size.height
-        val baseRadius = width * 0.46f * breathingRadius
+        val baseRadius = width * 0.46f
 
-        // Orb 1: Accent / Indigo fluid orb
+        // Orb 1: Accent / Indigo fluid orb (top-left)
         drawCircle(
             brush = Brush.radialGradient(
                 colorStops = arrayOf(
@@ -191,14 +138,14 @@ fun FloatingLiquidOrbsCanvas(
                     0.80f to orb1Color.copy(alpha = if (isDark) 0.02f else 0.015f),
                     1f to Color.Transparent,
                 ),
-                center = Offset(width * orb1X, height * orb1Y),
+                center = Offset(width * 0.28f, height * 0.26f),
                 radius = baseRadius * 1.15f,
             ),
-            center = Offset(width * orb1X, height * orb1Y),
+            center = Offset(width * 0.28f, height * 0.26f),
             radius = baseRadius * 1.15f,
         )
 
-        // Orb 2: Warm coral / Cyan fluid orb
+        // Orb 2: Warm coral / Cyan fluid orb (mid-right)
         drawCircle(
             brush = Brush.radialGradient(
                 colorStops = arrayOf(
@@ -207,10 +154,10 @@ fun FloatingLiquidOrbsCanvas(
                     0.85f to orb2Color.copy(alpha = if (isDark) 0.015f else 0.01f),
                     1f to Color.Transparent,
                 ),
-                center = Offset(width * orb2X, height * orb2Y),
+                center = Offset(width * 0.74f, height * 0.64f),
                 radius = baseRadius * 1.05f,
             ),
-            center = Offset(width * orb2X, height * orb2Y),
+            center = Offset(width * 0.74f, height * 0.64f),
             radius = baseRadius * 1.05f,
         )
 
@@ -248,8 +195,6 @@ fun Modifier.liquidGlassCard(
         .shadow(
             elevation = elevation,
             shape = shape,
-            ambientColor = if (isDark) accent.copy(alpha = 0.20f) else Color(0x306366F1),
-            spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color(0x250F172A),
         )
         .clip(shape)
         .background(brush = cardBrush, shape = shape)
