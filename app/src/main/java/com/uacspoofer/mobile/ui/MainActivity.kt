@@ -81,7 +81,30 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             val state = ConnectionStateStore.state.collectAsStateWithLifecycle().value
-            UacSniSpooferTheme {
+            val themeStore = androidx.compose.runtime.remember { com.uacspoofer.mobile.ui.theme.ThemeStore.get(applicationContext) }
+            val themeMode = themeStore.theme.collectAsStateWithLifecycle().value
+            val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val isDark = when (themeMode) {
+                com.uacspoofer.mobile.ui.theme.ThemeMode.DARK -> true
+                com.uacspoofer.mobile.ui.theme.ThemeMode.LIGHT -> false
+                else -> systemDark
+            }
+            androidx.compose.runtime.DisposableEffect(isDark) {
+                enableEdgeToEdge(
+                    statusBarStyle = if (isDark) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    },
+                    navigationBarStyle = if (isDark) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    },
+                )
+                onDispose {}
+            }
+            UacSniSpooferTheme(isDark = isDark) {
                 TvFocusProvider {
                     MainScreen(
                         state = state,

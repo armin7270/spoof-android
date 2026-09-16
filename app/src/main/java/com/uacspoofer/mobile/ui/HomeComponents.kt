@@ -166,21 +166,46 @@ internal fun HomeHeader(
             .height(headerHeight)
             .zIndex(8f),
     ) {
-        RemoteIconButton(
-            onClick = onMenuClick,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .size(buttonSize)
-                .focusProperties { canFocus = !drawerOpen }
-                .trackHomeSlot(HomeRemoteSlot.Menu)
-                .openDrawerOnDpadLeft(onMenuClick),
+        Row(
+            modifier = Modifier.align(Alignment.CenterStart),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = Icons.Rounded.Menu,
-                contentDescription = "Open navigation menu",
-                tint = UacColors.TextPrimary,
-                modifier = Modifier.size(iconSize),
-            )
+            RemoteIconButton(
+                onClick = onMenuClick,
+                modifier = Modifier
+                    .size(buttonSize)
+                    .focusProperties { canFocus = !drawerOpen }
+                    .trackHomeSlot(HomeRemoteSlot.Menu)
+                    .openDrawerOnDpadLeft(onMenuClick),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Menu,
+                    contentDescription = "Open navigation menu",
+                    tint = UacColors.TextPrimary,
+                    modifier = Modifier.size(iconSize),
+                )
+            }
+            val themeStore = remember(context) { com.uacspoofer.mobile.ui.theme.ThemeStore.get(context) }
+            val themeMode by themeStore.theme.collectAsStateWithLifecycle()
+            val isDark = when (themeMode) {
+                com.uacspoofer.mobile.ui.theme.ThemeMode.DARK -> true
+                com.uacspoofer.mobile.ui.theme.ThemeMode.LIGHT -> false
+                else -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+            RemoteIconButton(
+                onClick = { themeStore.toggleTheme() },
+                modifier = Modifier
+                    .size(buttonSize)
+                    .focusProperties { canFocus = !drawerOpen },
+            ) {
+                Icon(
+                    imageVector = if (isDark) com.uacspoofer.mobile.ui.theme.SunIcon else com.uacspoofer.mobile.ui.theme.MoonIcon,
+                    contentDescription = if (isDark) "Switch to Light Mode" else "Switch to Dark Mode",
+                    tint = if (isDark) Color(0xFFFFD54F) else Color(0xFF334155),
+                    modifier = Modifier.size(iconSize),
+                )
+            }
         }
         EngineSwitchRail(
             selected = engineMode,
@@ -227,6 +252,7 @@ internal fun AppTitle(compact: Boolean, accent: Color) {
             text = when {
                 engineMode.isTor -> "UAC TOR BRIDGE"
                 engineMode.isPow -> "UAC PoW"
+                engineMode.isFakeTcp -> "SNI SPOOFER v1.0"
                 else -> "UAC SNI SPOOFER"
             },
             fontSize = if (compact) 20.sp else 23.sp,

@@ -23,7 +23,8 @@ class PowEngineIsolationTest {
     fun homeToggleCyclesThreeEnginesWithoutSkippingPow() {
         assertEquals(EngineMode.TOR_WEBTUNNEL, EngineMode.XRAY_CF.next())
         assertEquals(EngineMode.UAC_POW, EngineMode.TOR_WEBTUNNEL.next())
-        assertEquals(EngineMode.XRAY_CF, EngineMode.UAC_POW.next())
+        assertEquals(EngineMode.FAKE_TCP, EngineMode.UAC_POW.next())
+        assertEquals(EngineMode.XRAY_CF, EngineMode.FAKE_TCP.next())
     }
 
     @Test

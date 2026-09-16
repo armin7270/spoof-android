@@ -36,6 +36,8 @@ import com.uacspoofer.mobile.engine.pow.PowPhase
 import com.uacspoofer.mobile.engine.pow.PowStatusStore
 import com.uacspoofer.mobile.engine.pow.PowTun2Socks
 import com.uacspoofer.mobile.engine.pow.PowTunRelayConfig
+import com.uacspoofer.mobile.engine.faketcp.FakeTcpCoordinator
+import com.uacspoofer.mobile.engine.faketcp.FakeTcpEngineStore
 import com.uacspoofer.mobile.logging.AppLogRepository
 import com.uacspoofer.mobile.logging.LogSource
 import com.uacspoofer.mobile.mci.MciConfig
@@ -113,6 +115,8 @@ class UacVpnService : VpnService() {
     private lateinit var torCoordinator: TorConnectionCoordinator
     private lateinit var powEngineStore: PowEngineStore
     private lateinit var powCoordinator: PowConnectionCoordinator
+    private lateinit var fakeTcpEngineStore: FakeTcpEngineStore
+    private lateinit var fakeTcpCoordinator: FakeTcpCoordinator
 
     override fun onCreate() {
         super.onCreate()
@@ -141,6 +145,8 @@ class UacVpnService : VpnService() {
         )
         powEngineStore = PowEngineStore.get(this)
         powCoordinator = PowConnectionCoordinator(this)
+        fakeTcpEngineStore = FakeTcpEngineStore.get(this)
+        fakeTcpCoordinator = FakeTcpCoordinator(this, VpnSocketProtector(this))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -441,6 +447,7 @@ class UacVpnService : VpnService() {
                     when {
                         activeEngine.isTor -> connectTorEngine(token, settings)
                         activeEngine.isPow -> connectPowEngine(token, settings)
+                        activeEngine.isFakeTcp -> connectFakeTcpEngine(token, settings)
                         else -> {
                             val profile = profileStore.selectedProfile()
                             connectRoutes(token, settings, profile)
@@ -534,7 +541,7 @@ class UacVpnService : VpnService() {
     }
 
     private fun requestSwitchProfile() {
-        if (engineModeStore.snapshot().isTor || engineModeStore.snapshot().isPow) {
+        if (engineModeStore.snapshot().isTor || engineModeStore.snapshot().isPow || engineModeStore.snapshot().isFakeTcp) {
             AppLogRepository.info(LogSource.SERVICE, "Profile switch ignored while a dedicated engine is selected")
             return
         }
@@ -1040,6 +1047,29 @@ class UacVpnService : VpnService() {
         AppLogRepository.success(LogSource.POW, "UAC PoW engine is active")
     }
 
+    private suspend fun connectFakeTcpEngine(token: Long, settings: AdvancedSettingsData) {
+        coroutineContext.ensureActive()
+        if (token != generation.get()) throw CancellationException("stale connect generation")
+        activeEngine = EngineMode.FAKE_TCP
+        fakeTcpCoordinator.connect(settings) { address, mtu ->
+            establishPowTun(address, mtu)
+        }
+        coroutineContext.ensureActive()
+        if (token != generation.get()) throw CancellationException("stale connect generation")
+        resourcesActive = true
+        if (!ConnectionStateStore.markConnected()) {
+            cleanupRoute()
+            resourcesActive = false
+            return
+        }
+        runCatching { updateNotification(connected = true) }
+            .onFailure { Log.w(TAG, "connected notification update failed", it) }
+        if (!isProxyMode()) startStatsMonitor(token)
+        startHealthMonitor(token)
+        startLatencySampler(token)
+        AppLogRepository.success(LogSource.SERVICE, "SNI Spoofing 1.0 (Fake TCP) engine is active")
+    }
+
     private fun requestApplyPowExit() {
         if (!engineModeStore.snapshot().isPow) return
         val state = ConnectionStateStore.state.value
@@ -1196,6 +1226,7 @@ class UacVpnService : VpnService() {
         latencyJob = null
         runCatching { torCoordinator.stop() }
         runCatching { powCoordinator.stop() }
+        runCatching { fakeTcpCoordinator.stop() }
         nativeTunEngine.stop()
         proxyCore.stop()
         activeEdge = null
@@ -1225,6 +1256,15 @@ class UacVpnService : VpnService() {
                 socketTimeoutMs = TOR_LATENCY_SOCKET_TIMEOUT_MS,
             )
         }
+        if (activeEngine.isFakeTcp) {
+            val fakeTcp = fakeTcpEngineStore.snapshot()
+            return connectivityProbe.verifyRuntime(
+                socksAddress = MciConfig.LOCAL_SOCKS_ADDRESS,
+                socksPort = fakeTcp.localPort,
+                totalTimeoutMs = TOR_LATENCY_TIMEOUT_MS,
+                socketTimeoutMs = TOR_LATENCY_SOCKET_TIMEOUT_MS,
+            )
+        }
         return connectivityProbe.verifyRuntime()
     }
 
@@ -1234,7 +1274,7 @@ class UacVpnService : VpnService() {
         val job = serviceScope.launch {
             try {
                 val tor = activeEngine.isTor
-                val dedicated = tor || activeEngine.isPow
+                val dedicated = tor || activeEngine.isPow || activeEngine.isFakeTcp
                 if (dedicated && settleFirst) {
                     delay(TOR_LATENCY_SETTLE_MS)
                     if (token != generation.get() || !resourcesActive) return@launch
@@ -1270,6 +1310,7 @@ class UacVpnService : VpnService() {
         isProxyMode() -> TunStats.ZERO
         activeEngine.isTor -> torCoordinator.tunStats()
         activeEngine.isPow -> powCoordinator.tunStats()
+        activeEngine.isFakeTcp -> fakeTcpCoordinator.tunStats()
         else -> nativeTunEngine.stats()
     }
 
@@ -1277,6 +1318,7 @@ class UacVpnService : VpnService() {
         isProxyMode() -> TunStats.ZERO
         activeEngine.isTor -> TunStats.ZERO
         activeEngine.isPow -> TunStats.ZERO
+        activeEngine.isFakeTcp -> TunStats.ZERO
         else -> nativeTunEngine.probeStats()
     }
 
@@ -1285,6 +1327,7 @@ class UacVpnService : VpnService() {
         activeEngine.isTor -> torCoordinator.isDaemonRunning() && torCoordinator.isRelayRunning()
         activeEngine.isPow && isProxyMode() -> powCoordinator.isOuterRunning() && powCoordinator.isRunning()
         activeEngine.isPow -> powCoordinator.isRunning()
+        activeEngine.isFakeTcp -> fakeTcpCoordinator.isRunning
         isProxyMode() -> proxyCore.isRunning()
         else -> nativeTunEngine.isRunning()
     }
@@ -1471,6 +1514,15 @@ class UacVpnService : VpnService() {
                     nextDelayMs = MciConfig.HEALTH_CHECK_INTERVAL_MS
                     continue
                 }
+                if (activeEngine.isFakeTcp) {
+                    if (!activeCoreRunning()) {
+                        AppLogRepository.warning(LogSource.SERVICE, "Fake TCP engine process exited; recovering")
+                        scheduleRuntimeRecovery(token, "Fake TCP engine process exited", penalizeCandidate = false)
+                        return@launch
+                    }
+                    nextDelayMs = MciConfig.HEALTH_CHECK_INTERVAL_MS
+                    continue
+                }
 
                 if (!activeCoreRunning()) {
                     AppLogRepository.warning(LogSource.SERVICE, "Active ${activeModeLabel()} core exited; recovering")
@@ -1595,6 +1647,7 @@ class UacVpnService : VpnService() {
                     when {
                         activeEngine.isTor -> connectTorEngine(recoveryToken, settings)
                         activeEngine.isPow -> connectPowEngine(recoveryToken, settings)
+                        activeEngine.isFakeTcp -> connectFakeTcpEngine(recoveryToken, settings)
                         else -> connectRoutes(recoveryToken, settings, profile)
                     }
                 }

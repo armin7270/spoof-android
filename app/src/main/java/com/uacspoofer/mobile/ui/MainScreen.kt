@@ -91,6 +91,7 @@ import com.uacspoofer.mobile.engine.pow.PowEngineStore
 import com.uacspoofer.mobile.engine.pow.PowRegions
 import com.uacspoofer.mobile.engine.tor.TorEngineStore
 import com.uacspoofer.mobile.engine.tor.TorExitCountry
+import com.uacspoofer.mobile.engine.faketcp.FakeTcpEngineStore
 import com.uacspoofer.mobile.profiles.ProfileStore
 import com.uacspoofer.mobile.profiles.ProfileLatencyCache
 import com.uacspoofer.mobile.profiles.CountryMetadata
@@ -161,6 +162,7 @@ fun MainScreen(
     var homeConfigsVisible by remember { mutableStateOf(false) }
     var homeTorCountriesVisible by remember { mutableStateOf(false) }
     var homePowCountriesVisible by remember { mutableStateOf(false) }
+    var homeFakeTcpVisible by remember { mutableStateOf(false) }
     var homeConfigsLibrary by remember { mutableStateOf(profileStore.snapshot()) }
     var homeConfigLatencies by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var updateState by remember { mutableStateOf<UpdateUiState>(UpdateUiState.Idle) }
@@ -269,9 +271,19 @@ fun MainScreen(
         if (engineMode.isXray) {
             homeTorCountriesVisible = false
             homePowCountriesVisible = false
+            homeFakeTcpVisible = false
         } else {
             homeConfigsVisible = false
-            if (engineMode.isTor) homePowCountriesVisible = false else homeTorCountriesVisible = false
+            if (engineMode.isTor) {
+                homePowCountriesVisible = false
+                homeFakeTcpVisible = false
+            } else if (engineMode.isPow) {
+                homeTorCountriesVisible = false
+                homeFakeTcpVisible = false
+            } else {
+                homeTorCountriesVisible = false
+                homePowCountriesVisible = false
+            }
         }
     }
     BackHandler(enabled = drawerState.isOpen) { closeDrawer() }
@@ -279,7 +291,8 @@ fun MainScreen(
         selectedDestination = if (
             selectedDestination == DrawerDestination.ADVANCED_SETTINGS ||
             selectedDestination == DrawerDestination.POW_SETTINGS ||
-            selectedDestination == DrawerDestination.TOR_SETTINGS
+            selectedDestination == DrawerDestination.TOR_SETTINGS ||
+            selectedDestination == DrawerDestination.FAKE_TCP_SETTINGS
         ) {
             DrawerDestination.SETTINGS
         } else {
@@ -292,6 +305,7 @@ fun MainScreen(
             !homeConfigsVisible &&
             !homeTorCountriesVisible &&
             !homePowCountriesVisible &&
+            !homeFakeTcpVisible &&
             !updateDialogVisible,
     ) {
         val connected = state == ConnectionState.CONNECTED
@@ -356,7 +370,8 @@ fun MainScreen(
                 selectedDestination = when (selectedDestination) {
                     DrawerDestination.ADVANCED_SETTINGS,
                     DrawerDestination.POW_SETTINGS,
-                    DrawerDestination.TOR_SETTINGS -> DrawerDestination.SETTINGS
+                    DrawerDestination.TOR_SETTINGS,
+                    DrawerDestination.FAKE_TCP_SETTINGS -> DrawerDestination.SETTINGS
                     else -> selectedDestination
                 },
                 selectedLanguage = selectedLanguage,
@@ -394,6 +409,7 @@ fun MainScreen(
                 DrawerDestination.CONFIGS -> when {
                     engineMode.isTor -> TorCountryScreen(onMenuClick = openDrawer)
                     engineMode.isPow -> PowCountryScreen(onMenuClick = openDrawer)
+                    engineMode.isFakeTcp -> FakeTcpSettingsScreen(onBack = { selectedDestination = DrawerDestination.HOME })
                     else -> ConfigsScreen(
                         onMenuClick = openDrawer,
                         connectionState = state,
@@ -417,6 +433,7 @@ fun MainScreen(
                     onAdvancedSettingsClick = { selectedDestination = DrawerDestination.ADVANCED_SETTINGS },
                     onPowSettingsClick = { selectedDestination = DrawerDestination.POW_SETTINGS },
                     onTorSettingsClick = { selectedDestination = DrawerDestination.TOR_SETTINGS },
+                    onFakeTcpSettingsClick = { selectedDestination = DrawerDestination.FAKE_TCP_SETTINGS },
                 )
                 DrawerDestination.ADVANCED_SETTINGS -> AdvancedSettingsScreen(
                     onBackClick = { selectedDestination = DrawerDestination.SETTINGS },
@@ -425,6 +442,9 @@ fun MainScreen(
                     onBack = { selectedDestination = DrawerDestination.SETTINGS },
                 )
                 DrawerDestination.TOR_SETTINGS -> TorSettingsScreen(
+                    onBack = { selectedDestination = DrawerDestination.SETTINGS },
+                )
+                DrawerDestination.FAKE_TCP_SETTINGS -> FakeTcpSettingsScreen(
                     onBack = { selectedDestination = DrawerDestination.SETTINGS },
                 )
                 DrawerDestination.SUPPORT -> SupportScreen(
@@ -449,6 +469,7 @@ fun MainScreen(
                             when {
                                 engineMode.isTor -> homeTorCountriesVisible = true
                                 engineMode.isPow -> homePowCountriesVisible = true
+                                engineMode.isFakeTcp -> homeFakeTcpVisible = true
                                 else -> {
                                     val latestLibrary = profileStore.snapshot()
                                     homeConfigsLibrary = latestLibrary
@@ -544,6 +565,10 @@ fun MainScreen(
                     selectedDestination = DrawerDestination.CONFIGS
                 },
                 onDismissRequest = { homePowCountriesVisible = false },
+            )
+            HomeFakeTcpDialog(
+                visible = homeFakeTcpVisible && engineMode.isFakeTcp,
+                onDismissRequest = { homeFakeTcpVisible = false },
             )
             if (updateDialogVisible) {
                 AppUpdateDialog(
@@ -912,6 +937,8 @@ private fun SelectedProfileRow(
     val torSettings by torStore.settings.collectAsStateWithLifecycle()
     val powStore = remember(context) { PowEngineStore.get(context) }
     val powSettings by powStore.settings.collectAsStateWithLifecycle()
+    val fakeTcpStore = remember(context) { FakeTcpEngineStore.get(context) }
+    val fakeTcpSettings by fakeTcpStore.settings.collectAsStateWithLifecycle()
     val isPersian = LocalHomePersian.current
     val nameLocale = if (isPersian) Locale("fa") else Locale.ENGLISH
     val selectedLabel = when {
@@ -925,11 +952,13 @@ private fun SelectedProfileRow(
         } else {
             PowRegions.name(powSettings.exitCountryCode, nameLocale)
         }
+        engineMode.isFakeTcp -> fakeTcpSettings.fakeSni
         else -> profile.name
     }
     val selectionKey = when {
         engineMode.isTor -> "tor:${torSettings.exitCountryCode}"
         engineMode.isPow -> "pow:${powSettings.exitCountryCode}"
+        engineMode.isFakeTcp -> "fake_tcp:${fakeTcpSettings.fakeSni}:${fakeTcpSettings.edgeIp}"
         else -> profile.id
     }
     val interactionSource = remember { MutableInteractionSource() }

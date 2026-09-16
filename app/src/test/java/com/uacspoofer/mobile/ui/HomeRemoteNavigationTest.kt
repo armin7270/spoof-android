@@ -63,7 +63,7 @@ class HomeRemoteNavigationTest {
         )
         assertEquals(
             HomeRemoteAction.Focus(HomeRemoteSlot.Connect),
-            HomeRemoteNavigation.action(HomeRemoteSlot.EnginePow, RemoteDpad.Down),
+            HomeRemoteNavigation.action(HomeRemoteSlot.EngineFakeTcp, RemoteDpad.Down),
         )
     }
 
@@ -110,6 +110,14 @@ class HomeRemoteNavigationTest {
             HomeRemoteNavigation.action(HomeRemoteSlot.EngineTor, RemoteDpad.Down),
         )
         assertEquals(
+            HomeRemoteAction.Focus(HomeRemoteSlot.EngineFakeTcp),
+            HomeRemoteNavigation.action(HomeRemoteSlot.EnginePow, RemoteDpad.Down),
+        )
+        assertEquals(
+            HomeRemoteAction.Focus(HomeRemoteSlot.EnginePow),
+            HomeRemoteNavigation.action(HomeRemoteSlot.EngineFakeTcp, RemoteDpad.Up),
+        )
+        assertEquals(
             HomeRemoteAction.Focus(HomeRemoteSlot.EngineTor),
             HomeRemoteNavigation.action(HomeRemoteSlot.EnginePow, RemoteDpad.Up),
         )
@@ -128,6 +136,10 @@ class HomeRemoteNavigationTest {
         assertEquals(
             HomeRemoteAction.Focus(HomeRemoteSlot.Menu),
             HomeRemoteNavigation.action(HomeRemoteSlot.EnginePow, RemoteDpad.Left),
+        )
+        assertEquals(
+            HomeRemoteAction.Focus(HomeRemoteSlot.Menu),
+            HomeRemoteNavigation.action(HomeRemoteSlot.EngineFakeTcp, RemoteDpad.Left),
         )
     }
 

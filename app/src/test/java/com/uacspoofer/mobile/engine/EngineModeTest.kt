@@ -46,7 +46,8 @@ class EngineModeTest {
     fun toggledCyclesXrayTorAndPow() {
         assertEquals(EngineMode.TOR_WEBTUNNEL, EngineMode.XRAY_CF.toggled())
         assertEquals(EngineMode.UAC_POW, EngineMode.TOR_WEBTUNNEL.toggled())
-        assertEquals(EngineMode.XRAY_CF, EngineMode.UAC_POW.toggled())
+        assertEquals(EngineMode.FAKE_TCP, EngineMode.UAC_POW.toggled())
+        assertEquals(EngineMode.XRAY_CF, EngineMode.FAKE_TCP.toggled())
     }
 
     @Test

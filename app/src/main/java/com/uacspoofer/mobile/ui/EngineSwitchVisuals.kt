@@ -74,12 +74,14 @@ internal fun EngineMode.identityAccent(): Color = when (this) {
     EngineMode.XRAY_CF -> Color(0xFF7EE4FF)
     EngineMode.TOR_WEBTUNNEL -> Color(0xFFE0C4FF)
     EngineMode.UAC_POW -> Color(0xFF6FF6D0)
+    EngineMode.FAKE_TCP -> Color(0xFFFFB74D)
 }
 
 internal fun EngineMode.toHomeRemoteSlot(): HomeRemoteSlot = when (this) {
     EngineMode.XRAY_CF -> HomeRemoteSlot.EngineXray
     EngineMode.TOR_WEBTUNNEL -> HomeRemoteSlot.EngineTor
     EngineMode.UAC_POW -> HomeRemoteSlot.EnginePow
+    EngineMode.FAKE_TCP -> HomeRemoteSlot.EngineFakeTcp
 }
 
 @Composable
@@ -87,12 +89,14 @@ internal fun EngineMode.switchContentDescription(): String = when (this) {
     EngineMode.XRAY_CF -> homeText("Cloudflare SNI engine", "موتور کلودفلر")
     EngineMode.TOR_WEBTUNNEL -> homeText("Tor engine", "موتور تور")
     EngineMode.UAC_POW -> homeText("PoW engine", "موتور PoW")
+    EngineMode.FAKE_TCP -> homeText("SNI Spoofing 1.0 engine", "موتور SNI Spoofing ۱.۰")
 }
 
 private fun EngineMode.identityIcon(): ImageVector = when (this) {
     EngineMode.XRAY_CF -> Icons.Rounded.Cloud
     EngineMode.TOR_WEBTUNNEL -> TorOnionIcon
     EngineMode.UAC_POW -> Icons.Rounded.Hexagon
+    EngineMode.FAKE_TCP -> FakeTcpShieldIcon
 }
 
 @Composable
@@ -278,6 +282,37 @@ private val TorOnionIcon: ImageVector by lazy {
             curveTo(15.72f, 15.42f, 14.02f, 16.88f, 12f, 16.88f)
             curveTo(9.98f, 16.88f, 8.28f, 15.42f, 8.28f, 13.52f)
             curveTo(8.28f, 11.78f, 9.88f, 10.28f, 12f, 10.28f)
+            close()
+        }
+    }.build()
+}
+
+internal val FakeTcpShieldIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Engine.FakeTcpShield",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            fill = SolidColor(Color.White),
+            pathFillType = PathFillType.EvenOdd,
+        ) {
+            moveTo(12f, 1f)
+            lineTo(3f, 5f)
+            lineTo(3f, 11f)
+            curveTo(3f, 16.55f, 6.84f, 21.74f, 12f, 23f)
+            curveTo(17.16f, 21.74f, 21f, 16.55f, 21f, 11f)
+            lineTo(21f, 5f)
+            close()
+            moveTo(12f, 11.99f)
+            lineTo(19f, 11.99f)
+            curveTo(18.47f, 16.11f, 15.72f, 19.78f, 12f, 20.93f)
+            lineTo(12f, 12f)
+            lineTo(5f, 12f)
+            lineTo(5f, 6.3f)
+            lineTo(12f, 3.19f)
             close()
         }
     }.build()

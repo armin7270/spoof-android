@@ -86,6 +86,7 @@ internal enum class DrawerDestination {
     ADVANCED_SETTINGS,
     POW_SETTINGS,
     TOR_SETTINGS,
+    FAKE_TCP_SETTINGS,
     SUPPORT,
 }
 
@@ -111,6 +112,7 @@ internal fun DrawerDestination.visibleFor(mode: EngineMode): Boolean = when (thi
     DrawerDestination.ADVANCED_SETTINGS -> mode.isXray
     DrawerDestination.POW_SETTINGS -> mode.isPow
     DrawerDestination.TOR_SETTINGS -> mode.isTor
+    DrawerDestination.FAKE_TCP_SETTINGS -> mode.isFakeTcp
     else -> true
 }
 
@@ -118,6 +120,8 @@ private fun drawerItemsFor(mode: EngineMode): List<DrawerItem> = buildList {
     add(DrawerItem(DrawerDestination.HOME, "Home", Icons.Outlined.Home))
     if (mode.isTor || mode.isPow) {
         add(DrawerItem(DrawerDestination.CONFIGS, "Select country", Icons.Outlined.Public))
+    } else if (mode.isFakeTcp) {
+        add(DrawerItem(DrawerDestination.FAKE_TCP_SETTINGS, "SNI Spoofing Config", FakeTcpShieldIcon))
     } else {
         add(DrawerItem(DrawerDestination.CONFIGS, "Configs", Icons.Outlined.Description))
         add(DrawerItem(DrawerDestination.SNI_MAKER, "Config Maker", Icons.Outlined.Code))
@@ -290,6 +294,11 @@ internal fun AppDrawer(
             Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
             HorizontalDivider(color = DrawerDivider, thickness = 1.dp)
             Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
+            DrawerThemeRow(
+                compact = compact,
+                enabled = drawerOpen,
+            )
+            Spacer(Modifier.height(if (compact) 4.dp else 6.dp))
             DrawerLanguageRow(
                 selectedLanguage = selectedLanguage,
                 onLanguageSelected = onLanguageSelected,
@@ -300,6 +309,74 @@ internal fun AppDrawer(
             )
             Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun DrawerThemeRow(
+    compact: Boolean,
+    enabled: Boolean = true,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val themeStore = remember(context) { com.uacspoofer.mobile.ui.theme.ThemeStore.get(context) }
+    val themeMode by themeStore.theme.collectAsStateWithLifecycle()
+    val isDark = when (themeMode) {
+        com.uacspoofer.mobile.ui.theme.ThemeMode.DARK -> true
+        com.uacspoofer.mobile.ui.theme.ThemeMode.LIGHT -> false
+        com.uacspoofer.mobile.ui.theme.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (compact) 40.dp else 50.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = if (isDark) com.uacspoofer.mobile.ui.theme.MoonIcon else com.uacspoofer.mobile.ui.theme.SunIcon,
+                contentDescription = null,
+                tint = if (isDark) Color(0xFFA9BAD0) else Color(0xFFFFD54F),
+                modifier = Modifier.size(if (compact) 18.dp else 21.dp),
+            )
+            Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
+            Text(
+                text = homeText("Theme", "حالت نمایش"),
+                color = Color(0xFFC8D4E5),
+                fontSize = if (compact) 11.sp else 12.5.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = homeLocalizedFont(),
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .width(if (compact) 126.dp else 142.dp)
+                .height(if (compact) 31.dp else 36.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF07111F))
+                .border(1.dp, Color(0x393B5875), RoundedCornerShape(12.dp))
+                .padding(3.dp),
+        ) {
+            LanguageSegment(
+                text = homeText("Dark", "تیره"),
+                selected = isDark,
+                compact = compact,
+                localizedFont = true,
+                onClick = { themeStore.setTheme(com.uacspoofer.mobile.ui.theme.ThemeMode.DARK) },
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+            )
+            LanguageSegment(
+                text = homeText("Light", "روشن"),
+                selected = !isDark,
+                compact = compact,
+                localizedFont = true,
+                onClick = { themeStore.setTheme(com.uacspoofer.mobile.ui.theme.ThemeMode.LIGHT) },
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -420,6 +497,7 @@ private fun DrawerNavItem(
                         DrawerDestination.ADVANCED_SETTINGS -> "تنظیمات پیشرفته"
                         DrawerDestination.POW_SETTINGS -> "UAC PoW"
                         DrawerDestination.TOR_SETTINGS -> "Tor"
+                        DrawerDestination.FAKE_TCP_SETTINGS -> "تنظیمات جعل SNI"
                         DrawerDestination.SUPPORT -> "پشتیبانی"
                     },
                 ),

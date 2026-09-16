@@ -105,15 +105,15 @@ internal fun ConnectionAwareFeatureCard(
             ?.takeIf { it.isKnown }
     }
     val displayedCountry = resolvedExitCountry
-        ?: if (engineMode.isTor || engineMode.isPow) CountryMetadata.UNKNOWN else profile.country
+        ?: if (engineMode.isTor || engineMode.isPow || engineMode.isFakeTcp) CountryMetadata.UNKNOWN else profile.country
     val errorCount = remember(entries) { entries.count { it.level == LogLevel.ERROR } }
     val scope = rememberCoroutineScope()
     var activeDialog by remember { mutableStateOf<HomeMetricDialog?>(null) }
 
     LaunchedEffect(state, lookupId) {
         if (state == ConnectionState.CONNECTED) {
-            if (engineMode.isTor || engineMode.isPow) delay(8_000)
-            exitInfoRepository.refresh(profile.id, force = engineMode.isTor || engineMode.isPow)
+            if (engineMode.isTor || engineMode.isPow || engineMode.isFakeTcp) delay(8_000)
+            exitInfoRepository.refresh(profile.id, force = engineMode.isTor || engineMode.isPow || engineMode.isFakeTcp)
         } else {
             activeDialog = null
         }

@@ -68,6 +68,7 @@ internal fun SettingsScreen(
     onAdvancedSettingsClick: () -> Unit,
     onPowSettingsClick: () -> Unit,
     onTorSettingsClick: () -> Unit,
+    onFakeTcpSettingsClick: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val isPersian = LocalHomePersian.current
@@ -131,6 +132,20 @@ internal fun SettingsScreen(
                             ),
                             isPersian = isPersian,
                             onClick = onTorSettingsClick,
+                        )
+                    }
+                }
+                if (engineMode.isFakeTcp) {
+                    item {
+                        SettingsNavigationCard(
+                            icon = Icons.Outlined.Tune,
+                            title = homeText("SNI Spoofing 1.0", "جعل SNI ۱.۰"),
+                            subtitle = homeText(
+                                "Fake TLS ClientHello & TCP Injection",
+                                "تزریق پکت جعلی TLS و فریب DPI",
+                            ),
+                            isPersian = isPersian,
+                            onClick = onFakeTcpSettingsClick,
                         )
                     }
                 }
