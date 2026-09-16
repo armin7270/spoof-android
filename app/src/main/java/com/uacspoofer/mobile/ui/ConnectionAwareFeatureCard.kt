@@ -60,6 +60,8 @@ import com.uacspoofer.mobile.logging.LogLevel
 import com.uacspoofer.mobile.profiles.CountryMetadata
 import com.uacspoofer.mobile.profiles.ProxyProfile
 import com.uacspoofer.mobile.ui.theme.UacColors
+import com.uacspoofer.mobile.ui.theme.liquidGlassCard
+import com.uacspoofer.mobile.ui.theme.liquidGlassBubble
 import com.uacspoofer.mobile.vpn.ConnectionMetricsStore
 import com.uacspoofer.mobile.vpn.ExitIpInfoRepository
 import com.uacspoofer.mobile.vpn.ExitIpInfoState
@@ -196,14 +198,14 @@ private fun ConnectedInsightsCard(
     onLogClick: () -> Unit,
 ) {
     val isPersian = LocalHomePersian.current
-    val shape = RoundedCornerShape(if (compact) 15.dp else 17.dp)
+    val shape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
+    val cardAccent = latencyColor(latencyMs)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (compact) 86.dp else 94.dp)
-            .background(UacColors.Surface.copy(alpha = 0.82f), shape)
-            .border(0.75.dp, UacColors.CardBorder, shape)
-            .padding(horizontal = 5.dp, vertical = if (compact) 7.dp else 9.dp),
+            .height(if (compact) 88.dp else 96.dp)
+            .liquidGlassCard(shape = shape, accent = cardAccent, elevation = 8.dp)
+            .padding(horizontal = 6.dp, vertical = if (compact) 7.dp else 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         InsightItem(
@@ -218,6 +220,7 @@ private fun ConnectedInsightsCard(
             detailColor = if (measuringLatency) UacColors.DisconnectedBlue else latencyColor(latencyMs),
             icon = Icons.Outlined.Speed,
             loading = measuringLatency,
+            accent = latencyColor(latencyMs),
             compact = compact,
             onClick = onPingClick,
             remoteSlot = HomeRemoteSlot.Ping,
@@ -227,10 +230,11 @@ private fun ConnectedInsightsCard(
         InsightItem(
             title = homeText("COUNTRY", "کشور"),
             value = country.countryName.takeIf { country.isKnown } ?: homeText("Unknown", "نامشخص"),
-            valueColor = Color.White,
+            valueColor = UacColors.TextPrimary,
             detail = country.countryCode ?: countryFallback,
             detailColor = UacColors.TextSecondary,
             icon = Icons.Outlined.Public,
+            accent = if (UacColors.isDark) Color(0xFF00E5FF) else Color(0xFF0284C7),
             leadingValue = if (country.isKnown) ({ CountryFlagIcon(country, size = 14.dp) }) else null,
             compact = compact,
             onClick = onCountryClick,
@@ -241,14 +245,15 @@ private fun ConnectedInsightsCard(
         InsightItem(
             title = homeText("LOG", "لاگ"),
             value = logCount.toString(),
-            valueColor = Color.White,
+            valueColor = UacColors.TextPrimary,
             detail = if (errorCount == 0) {
                 homeText("No errors", "بدون خطا")
             } else {
                 if (isPersian) "$errorCount خطا" else "$errorCount errors"
             },
-            detailColor = if (errorCount == 0) UacColors.ConnectedGreen else Color(0xFFFF7483),
+            detailColor = if (errorCount == 0) UacColors.ConnectedGreen else Color(0xFFF43F5E),
             icon = Icons.Outlined.Description,
+            accent = if (errorCount == 0) UacColors.ConnectedGreen else Color(0xFFF43F5E),
             compact = compact,
             onClick = onLogClick,
             remoteSlot = HomeRemoteSlot.Log,
@@ -266,6 +271,7 @@ private fun InsightItem(
     detailColor: Color,
     icon: ImageVector,
     loading: Boolean = false,
+    accent: Color = UacColors.ConnectingCyan,
     compact: Boolean,
     onClick: () -> Unit,
     modifier: Modifier,
@@ -277,24 +283,29 @@ private fun InsightItem(
         modifier = modifier
             .fillMaxHeight()
             .then(if (remoteSlot != null) Modifier.trackHomeSlot(remoteSlot) else Modifier)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 3.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(Modifier.size(25.dp), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .size(if (compact) 30.dp else 34.dp)
+                .liquidGlassBubble(shape = CircleShape, accent = accent),
+            contentAlignment = Alignment.Center,
+        ) {
             if (loading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(19.dp),
-                    color = UacColors.DisconnectedBlue,
+                    modifier = Modifier.size(17.dp),
+                    color = accent,
                     strokeWidth = 2.dp,
                 )
             } else {
-                Icon(icon, null, tint = UacColors.DisconnectedBlue, modifier = Modifier.size(21.dp))
+                Icon(icon, null, tint = accent, modifier = Modifier.size(if (compact) 17.dp else 19.dp))
             }
         }
-        Spacer(Modifier.height(1.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             title,
             color = Color.White,

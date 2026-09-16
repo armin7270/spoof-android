@@ -81,6 +81,9 @@ import com.uacspoofer.mobile.engine.pow.PowStatusStore
 import com.uacspoofer.mobile.settings.AdvancedSettingsStore
 import com.uacspoofer.mobile.settings.CONNECTION_MODE_PROXY
 import com.uacspoofer.mobile.ui.theme.UacColors
+import com.uacspoofer.mobile.ui.theme.liquidGlassCard
+import com.uacspoofer.mobile.ui.theme.liquidGlassBubble
+import com.uacspoofer.mobile.ui.theme.springBounceClick
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -168,23 +171,30 @@ internal fun HomeHeader(
     ) {
         Row(
             modifier = Modifier.align(Alignment.CenterStart),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RemoteIconButton(
-                onClick = onMenuClick,
+            Box(
                 modifier = Modifier
                     .size(buttonSize)
-                    .focusProperties { canFocus = !drawerOpen }
+                    .liquidGlassBubble(shape = CircleShape, accent = accent)
                     .trackHomeSlot(HomeRemoteSlot.Menu)
                     .openDrawerOnDpadLeft(onMenuClick),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Menu,
-                    contentDescription = "Open navigation menu",
-                    tint = UacColors.TextPrimary,
-                    modifier = Modifier.size(iconSize),
-                )
+                RemoteIconButton(
+                    onClick = onMenuClick,
+                    modifier = Modifier
+                        .size(buttonSize)
+                        .focusProperties { canFocus = !drawerOpen },
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Menu,
+                        contentDescription = "Open navigation menu",
+                        tint = UacColors.TextPrimary,
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
             }
             val themeStore = remember(context) { com.uacspoofer.mobile.ui.theme.ThemeStore.get(context) }
             val themeMode by themeStore.theme.collectAsStateWithLifecycle()
@@ -193,18 +203,26 @@ internal fun HomeHeader(
                 com.uacspoofer.mobile.ui.theme.ThemeMode.LIGHT -> false
                 else -> androidx.compose.foundation.isSystemInDarkTheme()
             }
-            RemoteIconButton(
-                onClick = { themeStore.toggleTheme() },
+            val themeAccent = if (isDark) Color(0xFFFFD54F) else Color(0xFF6366F1)
+            Box(
                 modifier = Modifier
                     .size(buttonSize)
-                    .focusProperties { canFocus = !drawerOpen },
+                    .liquidGlassBubble(shape = CircleShape, accent = themeAccent),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = if (isDark) com.uacspoofer.mobile.ui.theme.SunIcon else com.uacspoofer.mobile.ui.theme.MoonIcon,
-                    contentDescription = if (isDark) "Switch to Light Mode" else "Switch to Dark Mode",
-                    tint = if (isDark) Color(0xFFFFD54F) else Color(0xFF334155),
-                    modifier = Modifier.size(iconSize),
-                )
+                RemoteIconButton(
+                    onClick = { themeStore.toggleTheme() },
+                    modifier = Modifier
+                        .size(buttonSize)
+                        .focusProperties { canFocus = !drawerOpen },
+                ) {
+                    Icon(
+                        imageVector = if (isDark) com.uacspoofer.mobile.ui.theme.SunIcon else com.uacspoofer.mobile.ui.theme.MoonIcon,
+                        contentDescription = if (isDark) "Switch to Light Mode" else "Switch to Dark Mode",
+                        tint = themeAccent,
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
             }
         }
         EngineSwitchRail(
@@ -244,48 +262,58 @@ internal fun HomeHeader(
 @Composable
 internal fun AppTitle(compact: Boolean, accent: Color) {
     val engineMode = rememberDisplayedEngineMode()
+    val isDark = UacColors.isDark
+    val engineBadgeText = when {
+        engineMode.isTor -> "SPOOF · TOR ONION"
+        engineMode.isPow -> "SPOOF · PoW BRIDGE"
+        engineMode.isFakeTcp -> "SPOOF · FAKE TCP 1.0"
+        else -> "SPOOF · CLOUDFLARE"
+    }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(horizontal = if (compact) 56.dp else 64.dp),
+        modifier = Modifier.padding(horizontal = if (compact) 40.dp else 52.dp),
     ) {
         Text(
-            text = when {
-                engineMode.isTor -> "UAC TOR BRIDGE"
-                engineMode.isPow -> "UAC PoW"
-                engineMode.isFakeTcp -> "SNI SPOOFER v1.0"
-                else -> "UAC SNI SPOOFER"
-            },
-            fontSize = if (compact) 20.sp else 23.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 0.55.sp,
+            text = "TipsTopNetwork",
+            fontSize = if (compact) 22.sp else 26.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.5.sp,
             textAlign = TextAlign.Center,
             style = TextStyle(
                 brush = Brush.horizontalGradient(
-                    0f to accent,
-                    0.30f to Color(0xFFDFF8FF),
-                    0.58f to Color.White,
-                    0.82f to Color(0xFFB8DFFF),
-                    1f to accent,
+                    0f to (if (isDark) Color.White else Color(0xFF0F172A)),
+                    0.45f to accent,
+                    0.80f to (if (isDark) Color(0xFFDFF8FF) else Color(0xFF38BDF8)),
+                    1f to (if (isDark) Color.White else Color(0xFF0F172A)),
                 ),
                 shadow = Shadow(
-                    color = accent.copy(alpha = 0.62f),
-                    offset = Offset(0f, 1.5f),
-                    blurRadius = 16f,
+                    color = accent.copy(alpha = if (isDark) 0.50f else 0.25f),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 14f,
                 ),
             ),
         )
         Spacer(Modifier.height(4.dp))
-        Box(
+        Row(
             modifier = Modifier
-                .width(if (compact) 132.dp else 154.dp)
-                .height(2.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(Color.Transparent, accent.copy(alpha = 0.95f), Color.White, accent.copy(alpha = 0.95f), Color.Transparent),
-                    ),
-                    RoundedCornerShape(50),
-                ),
-        )
+                .liquidGlassBubble(shape = RoundedCornerShape(percent = 50), accent = accent)
+                .padding(horizontal = 12.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(accent, CircleShape),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = engineBadgeText,
+                color = if (isDark) Color(0xFFE2E8F0) else Color(0xFF334155),
+                fontSize = if (compact) 10.sp else 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp,
+            )
+        }
     }
 }
 
@@ -328,8 +356,18 @@ internal fun ConnectButton(
         ),
         label = "connect-loading-sweep",
     )
+    val rippleWave by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "connect-liquid-ripple",
+    )
     val glowIntensity = if (state == ConnectionState.CONNECTING) animatedGlow else 1f
     val emphasizePersianLabel = isPersian
+    val isDark = UacColors.isDark
     val buttonLabel = when (state) {
         ConnectionState.DISCONNECTED -> homeText("CONNECT", "اتصال")
         ConnectionState.CONNECTING -> homeText("CANCEL", "لغو")
@@ -342,7 +380,7 @@ internal fun ConnectButton(
         modifier = Modifier
             .size(diameter + halo)
             .trackHomeSlot(HomeRemoteSlot.Connect)
-            .clickable(enabled = !interactionDisabled, role = Role.Button, onClick = onClick),
+            .springBounceClick(enabled = !interactionDisabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
@@ -351,14 +389,15 @@ internal fun ConnectButton(
             val atmosphericRadius = size.minDimension / 2f
             val haloPx = halo.toPx()
 
+            // Outer atmospheric liquid glow
             drawCircle(
                 brush = Brush.radialGradient(
                     colorStops = arrayOf(
                         0f to Color.Transparent,
-                        0.54f to accent.copy(alpha = 0.015f * glowIntensity),
-                        0.67f to accent.copy(alpha = 0.20f * glowIntensity),
-                        0.76f to accent.copy(alpha = 0.34f * glowIntensity),
-                        0.87f to accent.copy(alpha = 0.14f * glowIntensity),
+                        0.54f to accent.copy(alpha = 0.02f * glowIntensity),
+                        0.67f to accent.copy(alpha = 0.22f * glowIntensity),
+                        0.76f to accent.copy(alpha = 0.38f * glowIntensity),
+                        0.87f to accent.copy(alpha = 0.16f * glowIntensity),
                         1f to Color.Transparent,
                     ),
                     center = center,
@@ -367,26 +406,37 @@ internal fun ConnectButton(
                 center = center,
                 radius = atmosphericRadius,
             )
+
+            // Expanding liquid ripple wave
+            val rippleRadius = surfaceRadius + (atmosphericRadius - surfaceRadius) * rippleWave
+            val rippleAlpha = ((1f - rippleWave) * 0.32f * glowIntensity).coerceIn(0f, 1f)
             drawCircle(
-                color = accent.copy(alpha = 0.075f * glowIntensity),
+                color = accent.copy(alpha = rippleAlpha),
+                radius = rippleRadius,
+                center = center,
+                style = Stroke(width = 1.8.dp.toPx()),
+            )
+
+            drawCircle(
+                color = accent.copy(alpha = 0.08f * glowIntensity),
                 radius = surfaceRadius + haloPx * 0.50f,
                 center = center,
                 style = Stroke(width = 1.dp.toPx()),
             )
             drawCircle(
-                color = accent.copy(alpha = 0.13f * glowIntensity),
+                color = accent.copy(alpha = 0.16f * glowIntensity),
                 radius = surfaceRadius + haloPx * 0.33f,
                 center = center,
                 style = Stroke(width = 1.4.dp.toPx()),
             )
             drawCircle(
-                color = accent.copy(alpha = 0.29f * glowIntensity),
+                color = accent.copy(alpha = 0.32f * glowIntensity),
                 radius = surfaceRadius + haloPx * 0.15f,
                 center = center,
                 style = Stroke(width = (7.dp.toPx() * (haloPx / 54.dp.toPx()).coerceIn(0.55f, 1f))),
             )
             drawCircle(
-                color = Color.White.copy(alpha = 0.10f * glowIntensity),
+                color = Color.White.copy(alpha = 0.15f * glowIntensity),
                 radius = surfaceRadius + haloPx * 0.07f,
                 center = center,
                 style = Stroke(width = 1.2.dp.toPx()),
@@ -405,7 +455,7 @@ internal fun ConnectButton(
                     style = Stroke(width = 11.dp.toPx()),
                 )
                 drawArc(
-                    color = accent.copy(alpha = 0.18f * animatedGlow),
+                    color = accent.copy(alpha = 0.20f * animatedGlow),
                     startAngle = loadingRotation,
                     sweepAngle = loadingSweep,
                     useCenter = false,
@@ -442,14 +492,30 @@ internal fun ConnectButton(
             }
         }
 
+        val buttonCoreBrush = if (isDark) {
+            Brush.radialGradient(
+                colors = listOf(
+                    accent.copy(alpha = 0.22f),
+                    Color(0x381E2C48),
+                    Color(0x1E0D1628),
+                ),
+            )
+        } else {
+            Brush.radialGradient(
+                colors = listOf(
+                    Color.White,
+                    accent.copy(alpha = 0.14f),
+                    Color(0xF0EBF2FE),
+                ),
+            )
+        }
+
         Box(
             modifier = Modifier
                 .size(diameter)
                 .clip(CircleShape)
                 .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(UacColors.ButtonCenter, UacColors.ButtonEdge),
-                    ),
+                    brush = buttonCoreBrush,
                     shape = CircleShape,
                 )
                 .semantics { contentDescription = buttonLabel },
@@ -459,7 +525,7 @@ internal fun ConnectButton(
                 val center = Offset(size.width / 2f, size.height / 2f)
                 val outerRadius = size.minDimension / 2f - 2.dp.toPx()
                 drawCircle(
-                    color = accent.copy(alpha = 0.34f * glowIntensity),
+                    color = accent.copy(alpha = 0.36f * glowIntensity),
                     radius = outerRadius,
                     center = center,
                     style = Stroke(width = 10.dp.toPx()),
@@ -468,9 +534,9 @@ internal fun ConnectButton(
                     brush = Brush.sweepGradient(
                         listOf(
                             accent,
-                            Color.White.copy(alpha = 0.90f),
+                            Color.White.copy(alpha = 0.95f),
                             accent,
-                            accent.copy(alpha = 0.76f),
+                            accent.copy(alpha = 0.80f),
                             accent,
                         ),
                         center = center,
@@ -479,20 +545,25 @@ internal fun ConnectButton(
                     center = center,
                     style = Stroke(width = 3.2.dp.toPx()),
                 )
+                // Specular curved glass sheen on upper half
                 drawArc(
-                    color = Color.White.copy(alpha = 0.34f),
-                    startAngle = 208f,
-                    sweepAngle = 104f,
-                    useCenter = false,
-                    topLeft = Offset(2.dp.toPx(), 2.dp.toPx()),
-                    size = androidx.compose.ui.geometry.Size(
-                        size.width - 4.dp.toPx(),
-                        size.height - 4.dp.toPx(),
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = if (isDark) 0.55f else 0.85f),
+                            Color.Transparent,
+                        ),
+                        startY = 2.dp.toPx(),
+                        endY = size.height * 0.55f,
                     ),
-                    style = Stroke(width = 0.9.dp.toPx()),
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(3.dp.toPx(), 3.dp.toPx()),
+                    size = Size(size.width - 6.dp.toPx(), size.height - 6.dp.toPx()),
+                    style = Stroke(width = 2.5.dp.toPx()),
                 )
                 drawCircle(
-                    color = UacColors.ButtonInnerRing,
+                    color = if (isDark) Color(0x35FFFFFF) else Color(0x306366F1),
                     radius = outerRadius - 6.dp.toPx(),
                     center = center,
                     style = Stroke(width = 1.1.dp.toPx()),
@@ -500,13 +571,20 @@ internal fun ConnectButton(
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = Icons.Rounded.PowerSettingsNew,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(diameter * 0.21f),
-                )
-                Spacer(Modifier.height(if (diameter < 150.dp) 4.dp else 8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(diameter * 0.34f)
+                        .liquidGlassBubble(shape = CircleShape, accent = accent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PowerSettingsNew,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(diameter * 0.20f),
+                    )
+                }
+                Spacer(Modifier.height(if (diameter < 150.dp) 4.dp else 7.dp))
                 Text(
                     text = buttonLabel,
                     color = accent,
@@ -525,7 +603,7 @@ internal fun ConnectButton(
                     style = TextStyle(
                         textDirection = if (isPersian) TextDirection.Rtl else TextDirection.Content,
                         shadow = if (emphasizePersianLabel) {
-                            Shadow(color = accent.copy(alpha = 0.42f), offset = Offset.Zero, blurRadius = 9f)
+                            Shadow(color = accent.copy(alpha = 0.45f), offset = Offset.Zero, blurRadius = 9f)
                         } else {
                             null
                         },
@@ -672,26 +750,19 @@ private const val CONNECTING_ROUTE_HINT_DELAY_MS = 2_000L
 
 @Composable
 internal fun FeatureCard(accent: Color, compact: Boolean, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(if (compact) 15.dp else 17.dp)
+    val shape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
     Row(
         modifier = modifier
-            .height(if (compact) 86.dp else 94.dp)
-            .shadow(
-                elevation = 6.dp,
-                shape = shape,
-                ambientColor = Color.Black.copy(alpha = 0.45f),
-                spotColor = Color.Black.copy(alpha = 0.55f),
-            )
-            .background(UacColors.Surface.copy(alpha = 0.77f), shape)
-            .border(0.75.dp, UacColors.CardBorder, shape)
-            .padding(horizontal = 5.dp, vertical = if (compact) 8.dp else 10.dp),
+            .height(if (compact) 88.dp else 96.dp)
+            .liquidGlassCard(shape = shape, accent = accent, elevation = 8.dp)
+            .padding(horizontal = 6.dp, vertical = if (compact) 8.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FeatureItem(
             Icons.Outlined.VerifiedUser,
             homeText("Secure", "امن"),
             homeText("Encrypted", "رمزگذاری‌شده"),
-            accent,
+            if (UacColors.isDark) Color(0xFF10B981) else Color(0xFF059669),
             compact,
             Modifier.weight(1f),
         )
@@ -700,7 +771,7 @@ internal fun FeatureCard(accent: Color, compact: Boolean, modifier: Modifier = M
             Icons.Rounded.Bolt,
             homeText("Fast", "سریع"),
             homeText("Optimized", "بهینه"),
-            accent,
+            if (UacColors.isDark) Color(0xFFF59E0B) else Color(0xFFD97706),
             compact,
             Modifier.weight(1f),
         )
@@ -709,7 +780,7 @@ internal fun FeatureCard(accent: Color, compact: Boolean, modifier: Modifier = M
             Icons.Rounded.Wifi,
             homeText("Stable", "پایدار"),
             homeText("Reliable", "قابل‌اعتماد"),
-            accent,
+            if (UacColors.isDark) Color(0xFF00E5FF) else Color(0xFF0284C7),
             compact,
             Modifier.weight(1f),
         )
@@ -731,25 +802,32 @@ private fun FeatureItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = accent,
-            modifier = Modifier.size(if (compact) 21.dp else 23.dp),
-        )
-        Spacer(Modifier.height(if (compact) 3.dp else 4.dp))
+        Box(
+            modifier = Modifier
+                .size(if (compact) 32.dp else 36.dp)
+                .liquidGlassBubble(shape = CircleShape, accent = accent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(if (compact) 18.dp else 20.dp),
+            )
+        }
+        Spacer(Modifier.height(3.dp))
         Text(
             text = title,
             color = UacColors.TextPrimary,
-            fontSize = if (compact) 11.5.sp else 12.sp,
-            fontWeight = FontWeight.Medium,
+            fontSize = if (compact) 11.sp else 11.5.sp,
+            fontWeight = FontWeight.SemiBold,
             fontFamily = localizedFont,
         )
         Spacer(Modifier.height(1.dp))
         Text(
             text = subtitle,
             color = UacColors.TextSecondary,
-            fontSize = if (compact) 9.5.sp else 10.sp,
+            fontSize = if (compact) 9.sp else 9.5.sp,
             fontWeight = FontWeight.Normal,
             fontFamily = localizedFont,
         )

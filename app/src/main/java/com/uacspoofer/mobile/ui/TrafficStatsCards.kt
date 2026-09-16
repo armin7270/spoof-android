@@ -32,6 +32,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.uacspoofer.mobile.ui.theme.UacColors
+import com.uacspoofer.mobile.ui.theme.liquidGlassCard
+import com.uacspoofer.mobile.ui.theme.liquidGlassBubble
 import com.uacspoofer.mobile.vpn.TrafficStatsStore
 import java.util.Locale
 
@@ -42,16 +44,19 @@ internal fun TrafficStatsRow(
     modifier: Modifier = Modifier,
 ) {
     val stats by TrafficStatsStore.stats.collectAsState()
+    val downloadColor = if (UacColors.isDark) Color(0xFF00E5FF) else Color(0xFF0284C7)
+    val uploadColor = if (UacColors.isDark) Color(0xFF818CF8) else Color(0xFF6366F1)
+
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
     ) {
         TrafficStatCard(
             title = homeText("Download", "دانلود"),
             totalBytes = stats.downloadBytes,
             bytesPerSecond = stats.downloadBytesPerSecond,
             icon = Icons.Rounded.ArrowDownward,
-            accent = accent,
+            accent = downloadColor,
             compact = compact,
             modifier = Modifier.weight(1f),
         )
@@ -60,7 +65,7 @@ internal fun TrafficStatsRow(
             totalBytes = stats.uploadBytes,
             bytesPerSecond = stats.uploadBytesPerSecond,
             icon = Icons.Rounded.ArrowUpward,
-            accent = accent,
+            accent = uploadColor,
             compact = compact,
             modifier = Modifier.weight(1f),
         )
@@ -78,30 +83,25 @@ private fun TrafficStatCard(
     modifier: Modifier,
 ) {
     val localizedFont = homeLocalizedFont()
-    val shape = RoundedCornerShape(if (compact) 18.dp else 21.dp)
+    val shape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
     val total = formatBytes(totalBytes)
     val rate = formatBytes(bytesPerSecond)
     Row(
         modifier = modifier
-            .height(if (compact) 76.dp else 88.dp)
-            .background(
-                Brush.linearGradient(listOf(Color(0xE512202E), Color(0xB5091724))),
-                shape,
-            )
-            .border(1.dp, accent.copy(alpha = 0.44f), shape)
-            .padding(horizontal = if (compact) 8.dp else 11.dp),
+            .height(if (compact) 78.dp else 90.dp)
+            .liquidGlassCard(shape = shape, accent = accent, elevation = 8.dp)
+            .padding(horizontal = if (compact) 10.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(if (compact) 31.dp else 36.dp)
-                .background(accent.copy(alpha = 0.11f), CircleShape)
-                .border(1.dp, accent.copy(alpha = 0.24f), CircleShape),
+                .size(if (compact) 34.dp else 40.dp)
+                .liquidGlassBubble(shape = CircleShape, accent = accent),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = accent, modifier = Modifier.size(if (compact) 18.dp else 21.dp))
+            Icon(icon, null, tint = accent, modifier = Modifier.size(if (compact) 19.dp else 22.dp))
         }
-        Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
+        Spacer(Modifier.width(if (compact) 8.dp else 10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 title,

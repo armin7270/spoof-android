@@ -55,6 +55,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uacspoofer.mobile.engine.EngineMode
 import com.uacspoofer.mobile.engine.EngineModeStore
+import com.uacspoofer.mobile.ui.theme.UacColors
+import com.uacspoofer.mobile.ui.theme.liquidGlassCard
+import com.uacspoofer.mobile.ui.theme.liquidGlassBubble
 
 internal val LocalDisplayedEngineMode = compositionLocalOf<EngineMode?> { null }
 
@@ -71,10 +74,10 @@ internal fun engineSwitchTransition(): ContentTransform =
         .togetherWith(fadeOut(tween(180, easing = FastOutLinearInEasing)))
 
 internal fun EngineMode.identityAccent(): Color = when (this) {
-    EngineMode.XRAY_CF -> Color(0xFF7EE4FF)
-    EngineMode.TOR_WEBTUNNEL -> Color(0xFFE0C4FF)
-    EngineMode.UAC_POW -> Color(0xFF6FF6D0)
-    EngineMode.FAKE_TCP -> Color(0xFFFFB74D)
+    EngineMode.XRAY_CF -> Color(0xFF00E5FF)
+    EngineMode.TOR_WEBTUNNEL -> Color(0xFFA78BFA)
+    EngineMode.UAC_POW -> Color(0xFF10B981)
+    EngineMode.FAKE_TCP -> Color(0xFFF59E0B)
 }
 
 internal fun EngineMode.toHomeRemoteSlot(): HomeRemoteSlot = when (this) {
@@ -112,33 +115,9 @@ internal fun EngineSwitchRail(
     val railShape = RoundedCornerShape(percent = 50)
     Column(
         modifier = modifier
-            .shadow(
-                elevation = 18.dp,
-                shape = railShape,
-                ambientColor = Color.Black.copy(alpha = 0.55f),
-                spotColor = Color.Black.copy(alpha = 0.32f),
-            )
-            .clip(railShape)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xF2141E2C),
-                        Color(0xF00C141E),
-                    ),
-                ),
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.22f),
-                        Color.White.copy(alpha = 0.06f),
-                    ),
-                ),
-                shape = railShape,
-            )
-            .padding(horizontal = 5.dp, vertical = if (compact) 6.dp else 8.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 6.dp),
+            .liquidGlassCard(shape = railShape, accent = selected.identityAccent(), elevation = 12.dp)
+            .padding(horizontal = 4.dp, vertical = if (compact) 5.dp else 7.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         EngineMode.entries.forEach { mode ->
@@ -175,7 +154,7 @@ private fun EngineSwitchIcon(
         label = "engine-icon-well",
     )
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.94f,
+        targetValue = if (selected) 1.05f else 0.94f,
         animationSpec = tween(240, easing = FastOutSlowInEasing),
         label = "engine-icon-scale",
     )
@@ -204,9 +183,9 @@ private fun EngineSwitchIcon(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colorStops = arrayOf(
-                            0f to identity.copy(alpha = 0.55f * wellAlpha),
-                            0.42f to identity.copy(alpha = 0.22f * wellAlpha),
-                            0.78f to identity.copy(alpha = 0.06f * wellAlpha),
+                            0f to identity.copy(alpha = 0.65f * wellAlpha),
+                            0.45f to identity.copy(alpha = 0.28f * wellAlpha),
+                            0.82f to identity.copy(alpha = 0.08f * wellAlpha),
                             1f to Color.Transparent,
                         ),
                         center = Offset(this.size.width / 2f, this.size.height / 2f),
@@ -215,18 +194,7 @@ private fun EngineSwitchIcon(
                     radius = radius,
                 )
             }
-            .clip(CircleShape)
-            .background(
-                color = if (selected) identity.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.04f),
-                shape = CircleShape,
-            )
-            .then(
-                if (selected) {
-                    Modifier.border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
-                } else {
-                    Modifier
-                },
-            )
+            .liquidGlassBubble(shape = CircleShape, accent = identity)
             .trackHomeSlot(mode.toHomeRemoteSlot())
             .clickable(
                 enabled = enabled,

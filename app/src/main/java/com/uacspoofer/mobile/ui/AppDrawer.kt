@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ListAlt
@@ -72,6 +73,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.uacspoofer.mobile.ui.theme.UacColors
+import com.uacspoofer.mobile.ui.theme.liquidGlassCard
+import com.uacspoofer.mobile.ui.theme.liquidGlassBubble
 import com.uacspoofer.mobile.update.AppUpdateManager
 import kotlinx.coroutines.delay
 
@@ -218,24 +221,8 @@ internal fun AppDrawer(
     CompositionLocalProvider(LocalHomePersian provides isPersian) {
         BoxWithConstraints(
             modifier = modifier
-            .graphicsLayer()
-            .shadow(
-                elevation = 10.dp,
-                shape = panelShape,
-                ambientColor = DrawerBlue.copy(alpha = 0.16f),
-                spotColor = DrawerBlue.copy(alpha = 0.18f),
-            )
-            .clip(panelShape)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF0A192C),
-                        Color(0xFF071526),
-                        Color(0xFF09182B),
-                    ),
-                ),
-            )
-            .border(1.dp, Color(0x4A34516F), panelShape),
+                .graphicsLayer()
+                .liquidGlassCard(shape = panelShape, accent = DrawerBlue, elevation = 16.dp),
         ) {
             val compact = maxHeight < 720.dp
 
@@ -387,33 +374,36 @@ private fun DrawerHeader(compact: Boolean, engineMode: EngineMode) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                top = if (compact) 4.dp else 14.dp,
+                top = if (compact) 6.dp else 14.dp,
                 bottom = if (compact) 6.dp else 12.dp,
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            imageVector = Icons.Outlined.VerifiedUser,
-            contentDescription = null,
-            tint = DrawerBlue,
-            modifier = Modifier.size(if (compact) 28.dp else 38.dp),
-        )
-        Spacer(Modifier.height(if (compact) 4.dp else 9.dp))
+        Box(
+            modifier = Modifier
+                .size(if (compact) 44.dp else 52.dp)
+                .liquidGlassBubble(shape = CircleShape, accent = DrawerBlue),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.VerifiedUser,
+                contentDescription = null,
+                tint = DrawerBlue,
+                modifier = Modifier.size(if (compact) 24.dp else 28.dp),
+            )
+        }
+        Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
         Text(
-            text = when {
-                engineMode.isTor -> "UAC TOR BRIDGE"
-                engineMode.isPow -> "UAC PoW"
-                else -> "UAC SNI Spoofer"
-            },
+            text = "TipsTopNetwork Spoof",
             color = DrawerText,
             fontSize = if (compact) 16.sp else 19.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.3).sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.2).sp,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(if (compact) 1.dp else 3.dp))
+        Spacer(Modifier.height(if (compact) 2.dp else 4.dp))
         Text(
-            text = homeText("Secure network tools", "ابزارهای امن شبکه"),
+            text = homeText("Liquid Glass Security", "ابزارهای امن شبکه · لکویید گلس"),
             color = DrawerMuted,
             fontSize = if (compact) 10.sp else 12.sp,
             fontWeight = FontWeight.Normal,

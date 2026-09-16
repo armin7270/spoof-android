@@ -102,6 +102,8 @@ import com.uacspoofer.mobile.settings.AdvancedSettingsStore
 import com.uacspoofer.mobile.ui.theme.UacColors
 import com.uacspoofer.mobile.ui.theme.UacSniSpooferTheme
 import com.uacspoofer.mobile.ui.theme.colorsFor
+import com.uacspoofer.mobile.ui.theme.FloatingLiquidOrbsCanvas
+import com.uacspoofer.mobile.ui.theme.liquidGlassBubble
 import com.uacspoofer.mobile.update.AppRelease
 import com.uacspoofer.mobile.update.AppUpdateManager
 import com.uacspoofer.mobile.update.InstallLaunchResult
@@ -753,22 +755,7 @@ private fun HomeScreenContent(
             if (compact) 18.dp else 28.dp,
         )
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val radius = size.width * 0.70f
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        stateColors.accent.copy(alpha = 0.040f),
-                        stateColors.accent.copy(alpha = 0.016f),
-                        stateColors.accent.copy(alpha = 0f),
-                    ),
-                    center = Offset(size.width / 2f, size.height * 0.41f),
-                    radius = radius,
-                ),
-                center = Offset(size.width / 2f, size.height * 0.41f),
-                radius = radius,
-            )
-        }
+        FloatingLiquidOrbsCanvas(accent = stateColors.accent, isDark = UacColors.isDark)
 
         Column(
             modifier = Modifier
@@ -975,7 +962,8 @@ private fun SelectedProfileRow(
     Row(
         modifier = modifier
             .widthIn(max = maxWidth)
-            .height(44.dp)
+            .height(42.dp)
+            .liquidGlassBubble(shape = RoundedCornerShape(percent = 50), accent = UacColors.ConnectingCyan)
             .semantics(mergeDescendants = true) { role = Role.Button }
             .then(
                 if (guideSession?.step == HomeGuideStep.Country) {
@@ -990,7 +978,7 @@ private fun SelectedProfileRow(
                 indication = LocalIndication.current,
                 onClick = onClick,
             )
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(6.5.dp).background(UacColors.DisconnectedBlue, CircleShape))
